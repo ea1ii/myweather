@@ -127,6 +127,26 @@ class MainTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertFalse(stdout.called)
 
+    def test_main_does_not_print_exports_in_mqtt_mode_by_default(self) -> None:
+        with mock.patch.object(
+            myweather,
+            "read_pimoroni_weather_hat",
+            return_value={"temperature": 9.8},
+        ), mock.patch.object(myweather, "publish_mqtt"), mock.patch(
+            "sys.stdout.write"
+        ) as stdout:
+            exit_code = myweather.main(
+                [
+                    "--mqtt-host",
+                    "mqtt.example.net",
+                    "--mqtt-topic",
+                    "allsky/weather",
+                ]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(stdout.called)
+
     def test_main_passes_mqtt_retain_flag(self) -> None:
         with mock.patch.object(
             myweather,
@@ -159,6 +179,25 @@ class MainTests(unittest.TestCase):
         self.assertEqual(publish_mqtt.call_args.kwargs["username"], "weather-user")
         self.assertEqual(publish_mqtt.call_args.kwargs["password"], "weather-pass")
         self.assertTrue(publish_mqtt.call_args.kwargs["retain"])
+
+    def test_main_defaults_mqtt_retain_to_false(self) -> None:
+        with mock.patch.object(
+            myweather,
+            "read_pimoroni_weather_hat",
+            return_value={"temperature": 9.8},
+        ), mock.patch.object(myweather, "publish_mqtt") as publish_mqtt:
+            with mock.patch("sys.stdout.write"):
+                exit_code = myweather.main(
+                    [
+                        "--mqtt-host",
+                        "mqtt.example.net",
+                        "--mqtt-topic",
+                        "allsky/weather",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(publish_mqtt.call_args.kwargs["retain"])
 
 
 if __name__ == "__main__":

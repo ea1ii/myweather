@@ -29,6 +29,8 @@ python myweather.py \
   --mqtt-topic allsky/weather
 ```
 
+If you want MQTT and shell exports in the same run, add `--also-print-exports`.
+
 ## Notes
 
 - The script expects the Pimoroni `weatherhat` Python module to be installed on

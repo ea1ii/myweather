@@ -140,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=argparse.SUPPRESS,
         help="Publish retained MQTT messages.",
     )
+    parser.add_argument(
+        "--also-print-exports",
+        action="store_true",
+        help="Print AS_ exports even when MQTT publishing is enabled.",
+    )
     return parser
 
 
@@ -170,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         readings = read_pimoroni_weather_hat()
         exports = format_allsky_exports(readings)
-        if exports:
+        if exports and (not mqtt_enabled or args.also_print_exports):
             sys.stdout.write(exports)
         if args.mqtt_host and args.mqtt_topic:
             publish_mqtt(
