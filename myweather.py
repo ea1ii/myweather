@@ -133,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
                 port=args.mqtt_port,
                 username=args.mqtt_username,
                 password=args.mqtt_password,
+                retain=args.mqtt_retain,
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

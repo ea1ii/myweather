@@ -90,6 +90,26 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 2)
 
+    def test_main_passes_mqtt_retain_flag(self) -> None:
+        with mock.patch.object(
+            myweather,
+            "read_pimoroni_weather_hat",
+            return_value={"temperature": 9.8},
+        ), mock.patch.object(myweather, "publish_mqtt") as publish_mqtt:
+            with mock.patch("sys.stdout.write"):
+                exit_code = myweather.main(
+                    [
+                        "--mqtt-host",
+                        "mqtt.example.net",
+                        "--mqtt-topic",
+                        "allsky/weather",
+                        "--mqtt-retain",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(publish_mqtt.call_args.kwargs["retain"])
+
 
 if __name__ == "__main__":
     unittest.main()
