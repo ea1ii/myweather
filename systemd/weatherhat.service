@@ -1,0 +1,10 @@
+[Unit]
+Description=Weather HAT AS_ variable generator
+After=multi-user.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/myweather/src/weatherhat_asvars.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
