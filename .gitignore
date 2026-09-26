@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# VS Code
+.vscode/
+
+# Runtime data
+data/logs/
+data/cache/
+
+# AllSky variables (do NOT commit these)
+../allsky/variables/AS_*.txt
