@@ -1,0 +1,95 @@
+import json
+import unittest
+from types import SimpleNamespace
+from unittest import mock
+
+import myweather
+
+
+class CollectReadingsTests(unittest.TestCase):
+    def test_collects_available_weather_hat_metrics(self) -> None:
+        source = SimpleNamespace(
+            temperature=lambda: 12.3,
+            humidity=45.6,
+            pressure=lambda: 1007.8,
+            wind_direction_cardinal="NW",
+        )
+
+        self.assertEqual(
+            myweather.collect_readings(source),
+            {
+                "temperature": 12.3,
+                "humidity": 45.6,
+                "pressure": 1007.8,
+                "wind_direction": "NW",
+            },
+        )
+
+
+class AllskyFormattingTests(unittest.TestCase):
+    def test_converts_readings_to_as_variables(self) -> None:
+        variables = myweather.to_allsky_variables(
+            {"temperature": 12.3, "wind direction": "NNE"}
+        )
+
+        self.assertEqual(
+            variables,
+            {"AS_TEMPERATURE": "12.3", "AS_WIND_DIRECTION": "NNE"},
+        )
+
+    def test_formats_shell_exports(self) -> None:
+        exports = myweather.format_allsky_exports(
+            {"wind_direction": "NNE", "temperature": 12.3}
+        )
+
+        self.assertEqual(
+            exports,
+            "export AS_TEMPERATURE=12.3\nexport AS_WIND_DIRECTION=NNE",
+        )
+
+
+class MqttPublishingTests(unittest.TestCase):
+    def test_publishes_json_payload(self) -> None:
+        client = mock.Mock()
+
+        myweather.publish_mqtt(
+            {"temperature": 12.3},
+            "mqtt.example.net",
+            "allsky/weather",
+            retain=True,
+            client_factory=lambda: client,
+        )
+
+        client.connect.assert_called_once_with("mqtt.example.net", 1883)
+        client.publish.assert_called_once_with(
+            "allsky/weather",
+            json.dumps({"temperature": 12.3}, sort_keys=True),
+            retain=True,
+        )
+        client.disconnect.assert_called_once_with()
+
+
+class MainTests(unittest.TestCase):
+    def test_main_prints_exports(self) -> None:
+        with mock.patch.object(
+            myweather,
+            "read_pimoroni_weather_hat",
+            return_value={"temperature": 9.8, "humidity": 82},
+        ):
+            with mock.patch("sys.stdout.write") as stdout:
+                exit_code = myweather.main([])
+
+        self.assertEqual(exit_code, 0)
+        written = "".join(call.args[0] for call in stdout.mock_calls if call.args)
+        self.assertIn("export AS_TEMPERATURE=9.8", written)
+        self.assertIn("export AS_HUMIDITY=82", written)
+
+    def test_main_requires_full_mqtt_configuration(self) -> None:
+        with self.assertRaises(SystemExit) as exc:
+            myweather.main(["--mqtt-host", "mqtt.example.net"])
+
+        self.assertEqual(exc.exception.code, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
