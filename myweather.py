@@ -94,7 +94,14 @@ def publish_mqtt(
     if username is not None:
         client.username_pw_set(username, password)
     client.connect(host, port)
-    client.publish(topic, json.dumps(readings, sort_keys=True), retain=retain)
+    publish_result = client.publish(
+        topic,
+        json.dumps(readings, sort_keys=True),
+        retain=retain,
+    )
+    wait_for_publish = getattr(publish_result, "wait_for_publish", None)
+    if callable(wait_for_publish):
+        wait_for_publish()
     client.disconnect()
 
 
@@ -126,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         readings = read_pimoroni_weather_hat()
         exports = format_allsky_exports(readings)
         if exports:
-            print(exports)
+            sys.stdout.write(exports)
         if args.mqtt_host and args.mqtt_topic:
             publish_mqtt(
                 readings,

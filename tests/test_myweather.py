@@ -51,6 +51,8 @@ class AllskyFormattingTests(unittest.TestCase):
 class MqttPublishingTests(unittest.TestCase):
     def test_publishes_json_payload(self) -> None:
         client = mock.Mock()
+        publish_result = mock.Mock()
+        client.publish.return_value = publish_result
 
         myweather.publish_mqtt(
             {"temperature": 12.3},
@@ -66,6 +68,7 @@ class MqttPublishingTests(unittest.TestCase):
             json.dumps({"temperature": 12.3}, sort_keys=True),
             retain=True,
         )
+        publish_result.wait_for_publish.assert_called_once_with()
         client.disconnect.assert_called_once_with()
 
 
