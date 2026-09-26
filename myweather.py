@@ -94,6 +94,9 @@ def publish_mqtt(
     if username is not None:
         client.username_pw_set(username, password)
     client.connect(host, port)
+    loop_stop = getattr(client, "loop_stop", None)
+    if callable(getattr(client, "loop_start", None)):
+        client.loop_start()
     try:
         publish_result = client.publish(
             topic,
@@ -104,6 +107,8 @@ def publish_mqtt(
         if callable(wait_for_publish):
             wait_for_publish()
     finally:
+        if callable(loop_stop):
+            loop_stop()
         client.disconnect()
 
 

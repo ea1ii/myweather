@@ -69,6 +69,8 @@ class MqttPublishingTests(unittest.TestCase):
             retain=True,
         )
         publish_result.wait_for_publish.assert_called_once_with()
+        client.loop_start.assert_called_once_with()
+        client.loop_stop.assert_called_once_with()
         client.disconnect.assert_called_once_with()
 
 
