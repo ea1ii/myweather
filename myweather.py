@@ -160,6 +160,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(
             "MQTT options require both --mqtt-host and --mqtt-topic to be provided."
         )
+    if (
+        mqtt_enabled
+        and hasattr(args, "mqtt_password")
+        and not hasattr(args, "mqtt_username")
+    ):
+        parser.error("--mqtt-password requires --mqtt-username.")
 
     try:
         readings = read_pimoroni_weather_hat()
