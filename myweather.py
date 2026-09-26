@@ -117,13 +117,27 @@ def build_parser() -> argparse.ArgumentParser:
         description="Read Pimoroni Weather HAT data and expose Allsky AS_ variables."
     )
     parser.add_argument("--mqtt-host", help="Optional MQTT broker hostname.")
-    parser.add_argument("--mqtt-port", type=int, default=1883, help="MQTT broker port.")
+    parser.add_argument(
+        "--mqtt-port",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="MQTT broker port.",
+    )
     parser.add_argument("--mqtt-topic", help="MQTT topic for JSON weather payloads.")
-    parser.add_argument("--mqtt-username", help="MQTT username.")
-    parser.add_argument("--mqtt-password", help="MQTT password.")
+    parser.add_argument(
+        "--mqtt-username",
+        default=argparse.SUPPRESS,
+        help="MQTT username.",
+    )
+    parser.add_argument(
+        "--mqtt-password",
+        default=argparse.SUPPRESS,
+        help="MQTT password.",
+    )
     parser.add_argument(
         "--mqtt-retain",
         action="store_true",
+        default=argparse.SUPPRESS,
         help="Publish retained MQTT messages.",
     )
     return parser
@@ -133,8 +147,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    mqtt_enabled = bool(args.mqtt_host) or bool(args.mqtt_topic)
+    mqtt_extra_options = [
+        option
+        for option in ("mqtt_port", "mqtt_username", "mqtt_password", "mqtt_retain")
+        if hasattr(args, option)
+    ]
+
     if bool(args.mqtt_host) != bool(args.mqtt_topic):
         parser.error("--mqtt-host and --mqtt-topic must be provided together.")
+    if not mqtt_enabled and mqtt_extra_options:
+        parser.error(
+            "MQTT options require both --mqtt-host and --mqtt-topic to be provided."
+        )
 
     try:
         readings = read_pimoroni_weather_hat()
@@ -146,10 +171,10 @@ def main(argv: list[str] | None = None) -> int:
                 readings,
                 args.mqtt_host,
                 args.mqtt_topic,
-                port=args.mqtt_port,
-                username=args.mqtt_username,
-                password=args.mqtt_password,
-                retain=args.mqtt_retain,
+                port=getattr(args, "mqtt_port", 1883),
+                username=getattr(args, "mqtt_username", None),
+                password=getattr(args, "mqtt_password", None),
+                retain=getattr(args, "mqtt_retain", False),
             )
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)

@@ -95,6 +95,12 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 2)
 
+    def test_main_rejects_mqtt_options_without_mqtt_mode(self) -> None:
+        with self.assertRaises(SystemExit) as exc:
+            myweather.main(["--mqtt-retain"])
+
+        self.assertEqual(exc.exception.code, 2)
+
     def test_main_suppresses_blank_output_when_no_readings_exist(self) -> None:
         with mock.patch.object(
             myweather,

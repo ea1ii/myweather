@@ -12,10 +12,13 @@ Print shell exports for Allsky:
 python myweather.py
 ```
 
-Use the output with `eval` if you want the variables in your current shell:
+To avoid executing unexpected output directly, write the exports to a file, check
+it, and then source it:
 
 ```bash
-eval "$(python myweather.py)"
+python myweather.py > myweather.env
+cat myweather.env
+. ./myweather.env
 ```
 
 Publish the same readings to MQTT:
