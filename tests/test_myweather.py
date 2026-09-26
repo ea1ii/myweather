@@ -90,6 +90,17 @@ class MainTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.code, 2)
 
+    def test_main_suppresses_blank_output_when_no_readings_exist(self) -> None:
+        with mock.patch.object(
+            myweather,
+            "read_pimoroni_weather_hat",
+            return_value={},
+        ), mock.patch("sys.stdout.write") as stdout:
+            exit_code = myweather.main([])
+
+        self.assertEqual(exit_code, 0)
+        self.assertFalse(stdout.called)
+
     def test_main_passes_mqtt_retain_flag(self) -> None:
         with mock.patch.object(
             myweather,

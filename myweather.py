@@ -124,7 +124,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         readings = read_pimoroni_weather_hat()
-        print(format_allsky_exports(readings))
+        exports = format_allsky_exports(readings)
+        if exports:
+            print(exports)
         if args.mqtt_host and args.mqtt_topic:
             publish_mqtt(
                 readings,

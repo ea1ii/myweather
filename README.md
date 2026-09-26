@@ -9,19 +9,19 @@ MQTT topic.
 Print shell exports for Allsky:
 
 ```bash
-python /home/runner/work/myweather/myweather/myweather.py
+python myweather.py
 ```
 
 Use the output with `eval` if you want the variables in your current shell:
 
 ```bash
-eval "$(python /home/runner/work/myweather/myweather/myweather.py)"
+eval "$(python myweather.py)"
 ```
 
 Publish the same readings to MQTT:
 
 ```bash
-python /home/runner/work/myweather/myweather/myweather.py \
+python myweather.py \
   --mqtt-host mqtt.example.net \
   --mqtt-topic allsky/weather
 ```
