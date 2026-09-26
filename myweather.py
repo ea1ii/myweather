@@ -94,15 +94,17 @@ def publish_mqtt(
     if username is not None:
         client.username_pw_set(username, password)
     client.connect(host, port)
-    publish_result = client.publish(
-        topic,
-        json.dumps(readings, sort_keys=True),
-        retain=retain,
-    )
-    wait_for_publish = getattr(publish_result, "wait_for_publish", None)
-    if callable(wait_for_publish):
-        wait_for_publish()
-    client.disconnect()
+    try:
+        publish_result = client.publish(
+            topic,
+            json.dumps(readings, sort_keys=True),
+            retain=retain,
+        )
+        wait_for_publish = getattr(publish_result, "wait_for_publish", None)
+        if callable(wait_for_publish):
+            wait_for_publish()
+    finally:
+        client.disconnect()
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -115,13 +115,26 @@ class MainTests(unittest.TestCase):
                     [
                         "--mqtt-host",
                         "mqtt.example.net",
+                        "--mqtt-port",
+                        "1884",
                         "--mqtt-topic",
                         "allsky/weather",
+                        "--mqtt-username",
+                        "weather-user",
+                        "--mqtt-password",
+                        "weather-pass",
                         "--mqtt-retain",
                     ]
                 )
 
         self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            publish_mqtt.call_args.args[:3],
+            ({"temperature": 9.8}, "mqtt.example.net", "allsky/weather"),
+        )
+        self.assertEqual(publish_mqtt.call_args.kwargs["port"], 1884)
+        self.assertEqual(publish_mqtt.call_args.kwargs["username"], "weather-user")
+        self.assertEqual(publish_mqtt.call_args.kwargs["password"], "weather-pass")
         self.assertTrue(publish_mqtt.call_args.kwargs["retain"])
 
 
