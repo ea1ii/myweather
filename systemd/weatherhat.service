@@ -3,6 +3,7 @@ Description=Weather HAT AS_ variable generator
 After=multi-user.target
 
 [Service]
+EnvironmentFile=-/etc/myweather/influxdb.env
 ExecStart=/usr/bin/python3 /home/pi/myweather/src/CGweather.py
 Restart=always
 

@@ -27,10 +27,13 @@
 import json
 import math
 import os
+import socket
+import sys
 import tempfile
 import threading
 import time
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 import helpers
@@ -65,6 +68,13 @@ class Weather:
         self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
         self._config_mtime_ns = self.config_path.stat().st_mtime_ns
+        self._influxdb_client = None
+        self._influxdb_write_api = None
+        self._influxdb_bucket = None
+        self._influxdb_org = None
+        self._influxdb_measurement = "weatherhat"
+        self._influxdb_station = socket.gethostname()
+        self._configure_influxdb()
         if hat is None:
             from weatherhat import WeatherHAT
 
@@ -109,6 +119,104 @@ class Weather:
         with self.config_path.open(encoding="utf-8") as config_file:
             return json.load(config_file)
 
+    def _configure_influxdb(self):
+        if self._influxdb_client is not None:
+            self._influxdb_client.close()
+        self._influxdb_client = None
+        self._influxdb_write_api = None
+        self._influxdb_bucket = None
+        self._influxdb_org = None
+
+        if not self.config.get("publish_to_influxdb", False):
+            return
+
+        required_environment = ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET")
+        missing = [name for name in required_environment if not os.environ.get(name)]
+        if missing:
+            print(
+                "InfluxDB publishing enabled but environment variables are missing: " + ", ".join(missing),
+                file=sys.stderr,
+                flush=True,
+            )
+            return
+
+        try:
+            from influxdb_client import InfluxDBClient
+            from influxdb_client.client.write_api import SYNCHRONOUS
+
+            self._influxdb_client = InfluxDBClient(
+                url=os.environ["INFLUXDB_URL"],
+                token=os.environ["INFLUXDB_TOKEN"],
+                org=os.environ["INFLUXDB_ORG"],
+                timeout=5000,
+            )
+            self._influxdb_write_api = self._influxdb_client.write_api(write_options=SYNCHRONOUS)
+            self._influxdb_bucket = os.environ["INFLUXDB_BUCKET"]
+            self._influxdb_org = os.environ["INFLUXDB_ORG"]
+            influxdb_settings = self.config.get("influxdb", {})
+            self._influxdb_measurement = influxdb_settings.get("measurement", "weatherhat")
+            self._influxdb_station = influxdb_settings.get("station", socket.gethostname())
+        except Exception:
+            print(
+                "Unable to initialize InfluxDB publishing; check the client installation and settings.",
+                file=sys.stderr,
+                flush=True,
+            )
+            if self._influxdb_client is not None:
+                self._influxdb_client.close()
+            self._influxdb_client = None
+            self._influxdb_write_api = None
+
+    def _write_influxdb(self):
+        if self._influxdb_write_api is None:
+            return
+
+        from influxdb_client import Point, WritePrecision
+
+        tendency = self.pressure_tendency or {}
+        fields = {
+            "cpu_temperature_sample_celsius": self.cpu_temperature_sample,
+            "cpu_temperature_average_celsius": self.cpu_temperature,
+            "temperature_raw_celsius": self.hat_temperature_raw,
+            "temperature_corrected_celsius": self.hat_temperature,
+            "dewpoint_celsius": self.hat_dewpoint_celsius,
+            "humidity_raw_percent": self.hat_humidity_raw,
+            "humidity_corrected_percent": self.hat_humidity,
+            "pressure_raw_hpa": self.hat_pressure_raw,
+            "pressure_corrected_hpa": self.hat_pressure_corrected,
+            "pressure_tendency_code": tendency.get("code"),
+            "pressure_tendency": tendency.get("keyword"),
+            "pressure_tendency_symbol": tendency.get("symbol"),
+            "light_lux": self.hat_light_lux,
+            "wind_speed_m_s": self.hat_wind_speed_m_s,
+            "wind_direction_degrees": self.hat_wind_direction_degrees,
+            "wind_direction_cardinal": self.hat_wind_direction_cardinal,
+            "rain_rate_mm_s": self.hat_rain_rate_mm_s,
+            "rain_interval_total_mm": self.hat_rain_total_mm,
+            "rain_interval_minutes": self.hat_rain_total_period_minutes,
+        }
+        point = Point(self._influxdb_measurement).tag("station", self._influxdb_station)
+        has_fields = False
+        for name, value in fields.items():
+            if value is None:
+                continue
+            if isinstance(value, float) and not math.isfinite(value):
+                continue
+            point.field(name, value)
+            has_fields = True
+        if not has_fields:
+            return
+
+        point.time(datetime.now(timezone.utc), WritePrecision.S)
+        try:
+            self._influxdb_write_api.write(
+                bucket=self._influxdb_bucket,
+                org=self._influxdb_org,
+                record=point,
+            )
+        except Exception as error:
+            print(f"InfluxDB write failed; will retry next HAT update: {error}", file=sys.stderr, flush=True)
+
     def reload_config_if_changed(self):
         try:
             config_mtime_ns = self.config_path.stat().st_mtime_ns
@@ -126,12 +234,18 @@ class Weather:
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             return False
 
+        influxdb_settings_changed = (
+            new_config.get("publish_to_influxdb", False) != self.config.get("publish_to_influxdb", False) or
+            new_config.get("influxdb", {}) != self.config.get("influxdb", {})
+        )
         self.config = new_config
         helpers.CORRECTION_FACTORS = new_config
         self._config_mtime_ns = config_mtime_ns
         if sample_count != self.cpu_temperature_buffer.maxlen:
             self.resize_cpu_temperature_buffer(sample_count)
         self.resize_pressure_tendency_buffer(pressure_buffer_capacity)
+        if influxdb_settings_changed:
+            self._configure_influxdb()
         return True
 
     def resize_cpu_temperature_buffer(self, sample_count):
@@ -285,6 +399,7 @@ class Weather:
             self._update_pressure_tendency()
             self._write_debug_data()
             self._write_allsky_extra_data()
+            self._write_influxdb()
             tendency = self.pressure_tendency or {}
             return {
                 "temperature_raw_celsius": self.hat_temperature_raw,
@@ -435,6 +550,8 @@ class Weather:
     def stop(self):
         self._stop_event.set()
         self._reader_thread.join()
+        if self._influxdb_client is not None:
+            self._influxdb_client.close()
 
 
 def main():

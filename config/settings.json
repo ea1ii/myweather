@@ -1,5 +1,10 @@
 {
   "publish_as_vars": true,
+  "publish_to_influxdb": true,
+  "influxdb": {
+    "measurement": "weatherhat",
+    "station": "CGallsky"
+  },
   "debug": true,
   "barometer": {
     "altitude_meters_asl": 38
