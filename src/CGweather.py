@@ -90,6 +90,7 @@ class Weather:
 
     def read_hat_temperature(self):
         with self._temperature_lock:
+            self.hat.update()
             self.hat_temperature_raw, self.hat_temperature = helpers.adjusted_temperature(self.hat.temperature)
             self._write_debug_data()
             return self.hat_temperature

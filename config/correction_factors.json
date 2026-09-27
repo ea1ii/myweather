@@ -4,16 +4,16 @@
     "linear"
   ],
   "publish_as_vars": false,
-  "debug": false,
+  "debug": true,
   "barometer": {
     "altitude_meters_asl": 38
   },
   "temperature": {
     "temp_factor": 999,
-    "adjustment_method": "polynomial",
+    "adjustment_method": "linear",
     "linear": {
       "slope": 1.0,
-      "intercept": 0.0
+      "intercept": -1.0
     },
     "polynomial": {
       "cubic_a": 0.0,
