@@ -1,40 +1,40 @@
 {
   "cpu": {
     "temperature": {
-      "sample_celsius": null,
-      "average_celsius": null
+      "sample_celsius": 44.79,
+      "average_celsius": 42.6472
     }
   },
   "hat": {
     "temperature": {
-      "raw_celsius": 12.0,
-      "corrected_celsius": 11.0
+      "raw_celsius": 17.250849258939184,
+      "corrected_celsius": 16.250849258939184
     },
-    "dewpoint_celsius": null,
+    "dewpoint_celsius": 14.604220863530125,
     "humidity": {
-      "raw_percent": null,
-      "corrected_percent": null
+      "raw_percent": 49.26685802295471,
+      "corrected_percent": 49.26685802295471
     },
     "pressure": {
-      "raw_hpa": 1013.25,
-      "corrected_hpa": 1017.8888191004125,
+      "raw_hpa": 1009.9334315025907,
+      "corrected_hpa": 1014.4730238197862,
       "tendency": null,
       "tendency_symbol": null,
       "tendency_code": null,
       "tendency_description": null
     },
     "light": {
-      "lux": null
+      "lux": 66.6875
     },
     "wind": {
-      "speed_m_s": null,
-      "direction_degrees": null,
-      "direction_cardinal": null
+      "speed_m_s": 0.4554195330850673,
+      "direction_degrees": 270,
+      "direction_cardinal": "W"
     },
     "rain": {
-      "rate_mm_s": null,
-      "interval_total_mm": null,
-      "interval_minutes": null
+      "rate_mm_s": 0.0,
+      "interval_total_mm": 0.0,
+      "interval_minutes": 1.0
     }
   }
 }

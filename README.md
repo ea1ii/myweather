@@ -28,7 +28,7 @@ python src/settings.py --get sampling.hat_measurements_interval_minutes
 python src/settings.py --set sampling.hat_measurements_interval_minutes 1
 ```
 
-> **Setup reminder:** Before relying on corrected pressure, set `barometer.altitude_meters_asl` to the Weather HAT's actual altitude above sea level. AllSky variable publishing is off by default; set `publish_as_vars` to `true` if you want the service to write `AS_` files.
+> **Setup reminder:** Before relying on corrected pressure, set `barometer.altitude_meters_asl` to the Weather HAT's actual altitude above sea level. Allsky Extra Data publishing is off by default; set `publish_as_vars` to `true` to publish readings.
 
 ```bash
 python src/settings.py --set barometer.altitude_meters_asl YOUR_ALTITUDE_METERS
@@ -40,7 +40,7 @@ python src/settings.py --set publish_as_vars true
 Top-level switches:
 
 - `debug` (boolean): write the current readings to `data/data.json` after measurements.
-- `publish_as_vars` (boolean): write readings as uppercase `AS_*.txt` files for AllSky. Disabled by default.
+- `publish_as_vars` (boolean): write Allsky Extra Data to `/home/pi/allsky/config/overlay/extra/weather.json`. Disabled by default. Keys use the unique `EA1II_` prefix; Allsky exposes them to overlays with an `AS_` prefix.
 
 `barometer`:
 
@@ -67,7 +67,7 @@ Top-level switches:
 - `hat_measurements_interval_minutes`: time between Weather HAT updates. It also defines the interval represented by each rain-total reading and determines pressure-history buffer capacity.
 - `weather_interval_seconds` is present for reference but is not currently used by the runtime.
 
-Debug output to [data/data.json](data/data.json) is controlled by `debug`. AllSky `AS_` variable publishing is controlled by `publish_as_vars` and is disabled by default. When enabled, the service writes temperature, dew point, humidity, pressure, light, wind, and rain values to `/home/pi/allsky/variables/`.
+Debug output to [data/data.json](data/data.json) is controlled by `debug`. When publishing is enabled, the Extra Data JSON contains temperature, dew point, humidity, pressure, light, wind, and rain values with expiry times. In an Allsky overlay, reference them by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally.
 
 ## Install And Run
 

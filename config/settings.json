@@ -1,5 +1,5 @@
 {
-  "publish_as_vars": false,
+  "publish_as_vars": true,
   "debug": true,
   "barometer": {
     "altitude_meters_asl": 38

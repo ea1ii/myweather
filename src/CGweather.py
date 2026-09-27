@@ -26,6 +26,8 @@
 
 import json
 import math
+import os
+import tempfile
 import threading
 import time
 from collections import deque
@@ -59,7 +61,7 @@ WMO_PRESSURE_TENDENCIES = {
 
 class Weather:
     def __init__(self, hat=None):
-        self.variables_path = Path("/home/pi/allsky/variables")
+        self.allsky_extra_path = Path("/home/pi/allsky/config/overlay/extra/weather.json")
         self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
         self._config_mtime_ns = self.config_path.stat().st_mtime_ns
@@ -282,7 +284,7 @@ class Weather:
             self.pressure_tendency_buffer.append((time.monotonic(), self.hat_pressure_corrected))
             self._update_pressure_tendency()
             self._write_debug_data()
-            self._write_as_vars()
+            self._write_allsky_extra_data()
             tendency = self.pressure_tendency or {}
             return {
                 "temperature_raw_celsius": self.hat_temperature_raw,
@@ -353,27 +355,56 @@ class Weather:
         self.debug_data_path.parent.mkdir(parents=True, exist_ok=True)
         self.debug_data_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
-    def _write_as_vars(self):
+    def _write_allsky_extra_data(self):
         if not self.config.get("publish_as_vars", False):
             return
 
         variables = {
-            "AS_TEMPERATURE": self.hat_temperature,
-            "AS_DEWPOINT": self.hat_dewpoint_celsius,
-            "AS_HUMIDITY": self.hat_humidity,
-            "AS_PRESSURE": self.hat_pressure_corrected,
-            "AS_LIGHT": self.hat_light_lux,
-            "AS_WIND_SPEED": self.hat_wind_speed_m_s,
-            "AS_WIND_DIRECTION": self.hat_wind_direction_cardinal,
-            "AS_WIND_DIRECTION_DEGREES": self.hat_wind_direction_degrees,
-            "AS_RAIN": self.hat_rain_rate_mm_s,
-            "AS_RAIN_TOTAL": self.hat_rain_total_mm,
-            "AS_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
+            "EA1II_TEMPERATURE": self.hat_temperature,
+            "EA1II_DEWPOINT": self.hat_dewpoint_celsius,
+            "EA1II_HUMIDITY": self.hat_humidity,
+            "EA1II_PRESSURE": self.hat_pressure_corrected,
+            "EA1II_LIGHT": self.hat_light_lux,
+            "EA1II_WIND_SPEED": self.hat_wind_speed_m_s,
+            "EA1II_WIND_DIRECTION": self.hat_wind_direction_cardinal,
+            "EA1II_WIND_DIRECTION_DEGREES": self.hat_wind_direction_degrees,
+            "EA1II_RAIN_RATE": self.hat_rain_rate_mm_s,
+            "EA1II_RAIN_TOTAL": self.hat_rain_total_mm,
+            "EA1II_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
         }
-        self.variables_path.mkdir(parents=True, exist_ok=True)
-        for name, value in variables.items():
-            if value is not None:
-                (self.variables_path / f"{name}.txt").write_text(str(value), encoding="utf-8")
+        expiry_seconds = max(
+            180,
+            int(self.config["sampling"]["hat_measurements_interval_minutes"] * 60 * 3),
+        )
+        extra_data = {
+            name: {"value": value, "expires": expiry_seconds}
+            for name, value in variables.items()
+            if value is not None
+        }
+
+        self.allsky_extra_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.allsky_extra_path.parent,
+                prefix=".weather-",
+                suffix=".json.tmp",
+                delete=False,
+            ) as extra_file:
+                json.dump(extra_data, extra_file, indent=4)
+                extra_file.write("\n")
+                temporary_path = Path(extra_file.name)
+            os.chmod(temporary_path, 0o644)
+            os.replace(temporary_path, self.allsky_extra_path)
+        except OSError as error:
+            print(f"Unable to write Allsky Extra Data: {error}", flush=True)
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
 
     def _run(self):
         next_cpu_temp_read = time.monotonic()
