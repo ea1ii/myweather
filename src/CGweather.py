@@ -137,3 +137,15 @@ class Weather:
         self._stop_event.set()
         self._reader_thread.join()
 
+
+def main():
+    weather = Weather()
+    try:
+        weather._reader_thread.join()
+    except KeyboardInterrupt:
+        weather.stop()
+
+
+if __name__ == "__main__":
+    main()
+
