@@ -4,14 +4,14 @@ import argparse
 import json
 from pathlib import Path
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "correction_factors.json"
+DEFAULT_SETTINGS_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.json"
 
 
 def load_config(path):
     with path.open(encoding="utf-8") as config_file:
         config = json.load(config_file)
     if not isinstance(config, dict):
-        raise ValueError("The correction factors file must contain a JSON object")
+        raise ValueError("The settings file must contain a JSON object")
     return config
 
 
@@ -54,20 +54,21 @@ def validate_value(config, dotted_path, current, new_value):
         raise ValueError(f"Value must have the same type as the current value ({type(current).__name__})")
 
     if dotted_path.endswith(".adjustment_method"):
-        methods = config.get("available_adjustment_methods", [])
+        group_name = dotted_path.rsplit(".", 1)[0].split(".")[-1]
+        methods = config.get(group_name, {}).get("available_adjustment_methods", [])
         if new_value not in methods:
             raise ValueError(f"Method must be one of: {', '.join(methods)}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="View or update correction factors in the JSON config.")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH,
-                        help="Config file path (default: %(default)s)")
+    parser = argparse.ArgumentParser(description="View or update weather settings in the JSON file.")
+    parser.add_argument("--config", type=Path, default=DEFAULT_SETTINGS_PATH,
+                        help="Settings file path (default: %(default)s)")
     operation = parser.add_mutually_exclusive_group(required=True)
-    operation.add_argument("--list", action="store_true", help="List all parameter paths and values")
-    operation.add_argument("--get", metavar="PATH", help="Show one parameter value")
+    operation.add_argument("--list", action="store_true", help="List all setting paths and values")
+    operation.add_argument("--get", metavar="PATH", help="Show one setting value")
     operation.add_argument("--set", nargs=2, metavar=("PATH", "VALUE"),
-                           help="Set a parameter; VALUE may be JSON or a plain string")
+                           help="Set a setting; VALUE may be JSON or a plain string")
     args = parser.parse_args()
 
     try:

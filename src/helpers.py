@@ -4,7 +4,7 @@ import math
 import json
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "correction_factors.json"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.json"
 with CONFIG_PATH.open(encoding="utf-8") as config_file:
     CORRECTION_FACTORS = json.load(config_file)
 

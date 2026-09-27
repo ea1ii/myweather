@@ -1,4 +1,5 @@
 import json
+import math
 import threading
 import time
 from collections import deque
@@ -6,11 +7,23 @@ from pathlib import Path
 
 import helpers
 
+WMO_PRESSURE_TENDENCIES = {
+    0: ("rising_then_falling", "Increasing, then decreasing; pressure is the same or higher than at the start of the window."),
+    1: ("rising_then_steady_or_slower", "Increasing, then steady or increasing more slowly; pressure is higher than at the start of the window."),
+    2: ("rising", "Increasing steadily or unsteadily; pressure is higher than at the start of the window."),
+    3: ("falling_or_steady_then_rising", "Decreasing or steady, then increasing, or increasing more rapidly; pressure is higher than at the start of the window."),
+    4: ("steady", "Steady; pressure is effectively unchanged over the window."),
+    5: ("falling_then_rising", "Decreasing, then increasing; pressure is the same or lower than at the start of the window."),
+    6: ("falling_then_steady_or_slower", "Decreasing, then steady or decreasing more slowly; pressure is lower than at the start of the window."),
+    7: ("falling", "Decreasing steadily or unsteadily; pressure is lower than at the start of the window."),
+    8: ("steady_or_rising_then_falling", "Steady or increasing, then decreasing; pressure is lower than at the start of the window."),
+}
+
 
 class Weather:
     def __init__(self, hat=None):
         self.variables_path = Path("/home/pi/allsky/variables")
-        self.config_path = Path(__file__).resolve().parent.parent / "config" / "correction_factors.json"
+        self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
         self._config_mtime_ns = self.config_path.stat().st_mtime_ns
         if hat is None:
@@ -22,11 +35,19 @@ class Weather:
         self.cpu_temperature_sample = None
         self.hat_temperature_raw = None
         self.hat_temperature = None
+        self.hat_pressure_raw = None
+        self.hat_pressure_corrected = None
+        self.hat_light_lux = None
+        self.pressure_tendency_buffer = deque()
+        self.pressure_tendency = None
         self.debug_data_path = Path(__file__).resolve().parent.parent / "data" / "data.json"
         self.cpu_temperature_buffer = deque()
         self._temperature_lock = threading.Lock()
         self.resize_cpu_temperature_buffer(
             self.config["sampling"]["cpu_temperature_samples_to_average"]
+        )
+        self.resize_pressure_tendency_buffer(
+            self._pressure_tendency_buffer_capacity(self.config)
         )
         self._stop_event = threading.Event()
         self._reader_thread = threading.Thread(
@@ -53,7 +74,8 @@ class Weather:
             sample_count = new_config["sampling"]["cpu_temperature_samples_to_average"]
             if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
                 return False
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            pressure_buffer_capacity = self._pressure_tendency_buffer_capacity(new_config)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             return False
 
         self.config = new_config
@@ -61,6 +83,7 @@ class Weather:
         self._config_mtime_ns = config_mtime_ns
         if sample_count != self.cpu_temperature_buffer.maxlen:
             self.resize_cpu_temperature_buffer(sample_count)
+        self.resize_pressure_tendency_buffer(pressure_buffer_capacity)
         return True
 
     def resize_cpu_temperature_buffer(self, sample_count):
@@ -79,6 +102,104 @@ class Weather:
         else:
             self.cpu_temperature = sum(self.cpu_temperature_buffer) / self.cpu_temperature_buffer.maxlen
 
+    def _pressure_tendency_buffer_capacity(self, config):
+        tendency_config = config["pressure_tendency"]
+        window_hours = tendency_config["window_hours"]
+        available_windows = tendency_config["available_window_hours"]
+        interval_minutes = config["sampling"]["hat_measurements_interval_minutes"]
+        threshold = tendency_config["steady_threshold_hpa"]
+        if type(window_hours) is not int or window_hours not in available_windows:
+            raise ValueError("Pressure tendency window must be one of the configured hour options")
+        if (isinstance(interval_minutes, bool) or not isinstance(interval_minutes, (int, float)) or
+                not math.isfinite(interval_minutes) or interval_minutes <= 0):
+            raise ValueError("HAT measurement interval must be a positive number of minutes")
+        if (isinstance(threshold, bool) or not isinstance(threshold, (int, float)) or
+                not math.isfinite(threshold) or threshold < 0):
+            raise ValueError("Pressure tendency threshold must be a non-negative number")
+        return math.ceil(window_hours * 60 / interval_minutes) + 1
+
+    def resize_pressure_tendency_buffer(self, sample_count):
+        if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 2:
+            raise ValueError("Pressure tendency buffer must hold at least two samples")
+
+        recent_samples = list(self.pressure_tendency_buffer)[-sample_count:]
+        self.pressure_tendency_buffer = deque(recent_samples, maxlen=sample_count)
+        self._update_pressure_tendency()
+
+    def _update_pressure_tendency(self):
+        self.pressure_tendency = None
+        samples = list(self.pressure_tendency_buffer)
+        if len(samples) < self.pressure_tendency_buffer.maxlen:
+            return
+
+        window_seconds = self.config["pressure_tendency"]["window_hours"] * 3600
+        window_start = samples[-1][0] - window_seconds
+        if samples[0][0] > window_start:
+            return
+
+        for index in range(1, len(samples)):
+            sample_time, sample_pressure = samples[index]
+            if sample_time >= window_start:
+                previous_time, previous_pressure = samples[index - 1]
+                fraction = (window_start - previous_time) / (sample_time - previous_time)
+                start_pressure = previous_pressure + fraction * (sample_pressure - previous_pressure)
+                pressures = [start_pressure] + [pressure for _, pressure in samples[index:]]
+                if sample_time == window_start:
+                    pressures = [sample_pressure] + [pressure for _, pressure in samples[index + 1:]]
+                threshold = self.config["pressure_tendency"]["steady_threshold_hpa"]
+                self.pressure_tendency = self._classify_pressure_tendency(pressures, threshold)
+                return
+
+    @staticmethod
+    def _classify_pressure_tendency(pressures, threshold):
+        if len(pressures) < 3:
+            return None
+
+        start = pressures[0]
+        middle = pressures[len(pressures) // 2]
+        end = pressures[-1]
+        net_change = end - start
+        first_change = middle - start
+        second_change = end - middle
+        peak_index = max(range(1, len(pressures) - 1), key=pressures.__getitem__)
+        trough_index = min(range(1, len(pressures) - 1), key=pressures.__getitem__)
+        rises_then_falls = (
+            pressures[peak_index] - start > threshold and
+            pressures[peak_index] - end > threshold
+        )
+        falls_then_rises = (
+            start - pressures[trough_index] > threshold and
+            end - pressures[trough_index] > threshold
+        )
+
+        if net_change > threshold:
+            if rises_then_falls:
+                code = 0
+            elif first_change <= threshold or second_change - first_change > threshold:
+                code = 3
+            elif second_change <= threshold or first_change - second_change > threshold:
+                code = 1
+            else:
+                code = 2
+        elif net_change < -threshold:
+            if falls_then_rises:
+                code = 5
+            elif first_change >= -threshold:
+                code = 8
+            elif second_change >= -threshold or second_change - first_change > threshold:
+                code = 6
+            else:
+                code = 7
+        elif rises_then_falls and first_change >= 0:
+            code = 0
+        elif falls_then_rises:
+            code = 5
+        else:
+            code = 4
+
+        keyword, description = WMO_PRESSURE_TENDENCIES[code]
+        return {"code": code, "keyword": keyword, "description": description}
+
     def read_cpu_temperature(self):
         with self._temperature_lock:
             temperature_millidegrees = Path("/sys/class/thermal/thermal_zone0/temp").read_text(encoding="utf-8")
@@ -88,22 +209,58 @@ class Weather:
             self._write_debug_data()
             return self.cpu_temperature
 
-    def read_hat_temperature(self):
+    def read_hat_measurements(self):
         with self._temperature_lock:
             self.hat.update()
+            self.hat_pressure_raw = self.hat.pressure
+            self.hat_light_lux = self.hat.lux
             self.hat_temperature_raw, self.hat_temperature = helpers.adjusted_temperature(self.hat.temperature)
+            altitude = self.config["barometer"]["altitude_meters_asl"]
+            pressure_factor = helpers.barometer_altitude_comp_factor(altitude, self.hat_temperature)
+            self.hat_pressure_corrected = self.hat_pressure_raw * pressure_factor
+            self.pressure_tendency_buffer.append((time.monotonic(), self.hat_pressure_corrected))
+            self._update_pressure_tendency()
             self._write_debug_data()
-            return self.hat_temperature
+            tendency = self.pressure_tendency or {}
+            return {
+                "temperature_raw_celsius": self.hat_temperature_raw,
+                "temperature_corrected_celsius": self.hat_temperature,
+                "pressure_raw_hpa": self.hat_pressure_raw,
+                "pressure_corrected_hpa": self.hat_pressure_corrected,
+                "pressure_tendency": tendency.get("keyword"),
+                "pressure_tendency_code": tendency.get("code"),
+                "pressure_tendency_description": tendency.get("description"),
+                "light_lux": self.hat_light_lux,
+            }
 
     def _write_debug_data(self):
         if not self.config.get("debug", False):
             return
 
+        tendency = self.pressure_tendency or {}
         data = {
-            "cpu_temperature_sample_celsius": self.cpu_temperature_sample,
-            "cpu_temperature_average_celsius": self.cpu_temperature,
-            "hat_temperature_raw_celsius": self.hat_temperature_raw,
-            "hat_temperature_corrected_celsius": self.hat_temperature,
+            "cpu": {
+                "temperature": {
+                    "sample_celsius": self.cpu_temperature_sample,
+                    "average_celsius": self.cpu_temperature,
+                }
+            },
+            "hat": {
+                "temperature": {
+                    "raw_celsius": self.hat_temperature_raw,
+                    "corrected_celsius": self.hat_temperature,
+                },
+                "pressure": {
+                    "raw_hpa": self.hat_pressure_raw,
+                    "corrected_hpa": self.hat_pressure_corrected,
+                    "tendency": tendency.get("keyword"),
+                    "tendency_code": tendency.get("code"),
+                    "tendency_description": tendency.get("description"),
+                },
+                "light": {
+                    "lux": self.hat_light_lux,
+                },
+            },
         }
         self.debug_data_path.parent.mkdir(parents=True, exist_ok=True)
         self.debug_data_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -118,7 +275,7 @@ class Weather:
 
             sampling = self.config["sampling"]
             cpu_temp_interval = sampling["cpu_temperature_interval_seconds"]
-            hat_temp_interval = sampling["hat_temperature_interval_minutes"] * 60
+            hat_measurements_interval = sampling["hat_measurements_interval_minutes"] * 60
             current_time = time.monotonic()
             if current_time >= next_cpu_temp_read:
                 self.read_cpu_temperature()
@@ -127,8 +284,8 @@ class Weather:
             current_time = time.monotonic()
             if current_time >= next_hat_temp_read:
                 if self.cpu_temperature is not None:
-                    self.read_hat_temperature()
-                next_hat_temp_read = time.monotonic() + hat_temp_interval
+                    self.read_hat_measurements()
+                next_hat_temp_read = time.monotonic() + hat_measurements_interval
 
             next_read_time = min(next_cpu_temp_read, next_hat_temp_read)
             wait_time = max(0.0, next_read_time - time.monotonic())

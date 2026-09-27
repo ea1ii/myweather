@@ -1,6 +1,24 @@
 {
-	"cpu_temperature_sample_celsius": null,
-	"cpu_temperature_average_celsius": null,
-	"hat_temperature_raw_celsius": null,
-	"hat_temperature_corrected_celsius": null
+  "cpu": {
+    "temperature": {
+      "sample_celsius": null,
+      "average_celsius": null
+    }
+  },
+  "hat": {
+    "temperature": {
+      "raw_celsius": 12.0,
+      "corrected_celsius": 11.0
+    },
+    "pressure": {
+      "raw_hpa": 1013.25,
+      "corrected_hpa": 1017.8888191004125,
+      "tendency": null,
+      "tendency_code": null,
+      "tendency_description": null
+    },
+    "light": {
+      "lux": null
+    }
+  }
 }
