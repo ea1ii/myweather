@@ -3,7 +3,7 @@ Description=Weather HAT AS_ variable generator
 After=multi-user.target
 
 [Service]
-ExecStart=/usr/bin/python3 /home/pi/myweather/src/weatherhat_asvars.py
+ExecStart=/usr/bin/python3 /home/pi/myweather/src/CGweather.py
 Restart=always
 
 [Install]

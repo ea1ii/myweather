@@ -1,0 +1,6 @@
+{
+	"cpu_temperature_sample_celsius": null,
+	"cpu_temperature_average_celsius": null,
+	"hat_temperature_raw_celsius": null,
+	"hat_temperature_corrected_celsius": null
+}

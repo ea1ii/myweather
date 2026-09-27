@@ -1,0 +1,43 @@
+{
+  "available_adjustment_methods": [
+    "polynomial",
+    "linear"
+  ],
+  "publish_as_vars": false,
+  "debug": false,
+  "barometer": {
+    "altitude_meters_asl": 38
+  },
+  "temperature": {
+    "temp_factor": 999,
+    "adjustment_method": "polynomial",
+    "linear": {
+      "slope": 1.0,
+      "intercept": 0.0
+    },
+    "polynomial": {
+      "cubic_a": 0.0,
+      "cubic_b": 0.0,
+      "cubic_c": 1.0,
+      "cubic_d": 0.0
+    }
+  },
+  "humidity": {
+    "adjustment_method": "polynomial",
+    "linear": {
+      "slope": 1.0,
+      "intercept": 0.0
+    },
+    "polynomial": {
+      "quadratic_a": 0.0,
+      "quadratic_b": 1.0,
+      "quadratic_c": 0.0
+    }
+  },
+  "sampling": {
+    "weather_interval_seconds": 5.0,
+    "cpu_temperature_interval_seconds": 5.0,
+    "hat_temperature_interval_minutes": 5.0,
+    "cpu_temperature_samples_to_average": 5
+  }
+}
