@@ -1,3 +1,29 @@
+#!/usr/bin/env python3
+
+#############################################################
+# Weather data acquisition and processing for the WeatherHAT
+#############################################################
+
+# Author: Carlos Gil (ea1ii)
+# Date: 2026-09-27
+# Version: 0.1
+# License: MIT (see ../LICENSE)
+# GitHub: https://github.com/ea1ii/myweather
+#
+# Description: This script reads weather data from the WeatherHAT,
+#               applies corrections based on configuration settings,
+#               and provides processed weather information.
+#
+# Notes:
+# - Ensure the WeatherHAT is properly connected before running this script.
+# - The script continuously reads data in a separate thread and updates internal state.
+#
+# Usage:
+# - Enable automatic startup at boot: sudo systemctl enable weatherhat
+# - Disable automatic startup at boot: sudo systemctl disable weatherhat
+# - Start: sudo systemctl start weatherhat
+# - Stop:  sudo systemctl stop weatherhat
+
 import json
 import math
 import threading
@@ -7,16 +33,27 @@ from pathlib import Path
 
 import helpers
 
+WIND_DIRECTION_TOKENS = {
+    "North": "N",
+    "North East": "NE",
+    "East": "E",
+    "South East": "SE",
+    "South": "S",
+    "South West": "SW",
+    "West": "W",
+    "North West": "NW",
+}
+
 WMO_PRESSURE_TENDENCIES = {
-    0: ("rising_then_falling", "Increasing, then decreasing; pressure is the same or higher than at the start of the window."),
-    1: ("rising_then_steady_or_slower", "Increasing, then steady or increasing more slowly; pressure is higher than at the start of the window."),
-    2: ("rising", "Increasing steadily or unsteadily; pressure is higher than at the start of the window."),
-    3: ("falling_or_steady_then_rising", "Decreasing or steady, then increasing, or increasing more rapidly; pressure is higher than at the start of the window."),
-    4: ("steady", "Steady; pressure is effectively unchanged over the window."),
-    5: ("falling_then_rising", "Decreasing, then increasing; pressure is the same or lower than at the start of the window."),
-    6: ("falling_then_steady_or_slower", "Decreasing, then steady or decreasing more slowly; pressure is lower than at the start of the window."),
-    7: ("falling", "Decreasing steadily or unsteadily; pressure is lower than at the start of the window."),
-    8: ("steady_or_rising_then_falling", "Steady or increasing, then decreasing; pressure is lower than at the start of the window."),
+    0: ("rising_then_falling", "↗↘", "Increasing, then decreasing; pressure is the same or higher than at the start of the window."),
+    1: ("rising_then_steady_or_slower", "↗", "Increasing, then steady or increasing more slowly; pressure is higher than at the start of the window."),
+    2: ("rising", "↗→", "Increasing steadily or unsteadily; pressure is higher than at the start of the window."),
+    3: ("falling_or_steady_then_rising", "↘↗", "Decreasing or steady, then increasing, or increasing more rapidly; pressure is higher than at the start of the window."),
+    4: ("steady", "→", "Steady; pressure is effectively unchanged over the window."),
+    5: ("falling_then_rising", "↘→", "Decreasing, then increasing; pressure is the same or lower than at the start of the window."),
+    6: ("falling_then_steady_or_slower", "↘→", "Decreasing, then steady or decreasing more slowly; pressure is lower than at the start of the window."),
+    7: ("falling", "↘", "Decreasing steadily or unsteadily; pressure is lower than at the start of the window."),
+    8: ("steady_or_rising_then_falling", "→↘", "Steady or increasing, then decreasing; pressure is lower than at the start of the window."),
 }
 
 
@@ -35,9 +72,18 @@ class Weather:
         self.cpu_temperature_sample = None
         self.hat_temperature_raw = None
         self.hat_temperature = None
+        self.hat_dewpoint_celsius = None
+        self.hat_humidity_raw = None
+        self.hat_humidity = None
         self.hat_pressure_raw = None
         self.hat_pressure_corrected = None
         self.hat_light_lux = None
+        self.hat_wind_speed_m_s = None
+        self.hat_wind_direction_degrees = None
+        self.hat_wind_direction_cardinal = None
+        self.hat_rain_rate_mm_s = None
+        self.hat_rain_total_mm = None
+        self.hat_rain_total_period_minutes = None
         self.pressure_tendency_buffer = deque()
         self.pressure_tendency = None
         self.debug_data_path = Path(__file__).resolve().parent.parent / "data" / "data.json"
@@ -197,8 +243,8 @@ class Weather:
         else:
             code = 4
 
-        keyword, description = WMO_PRESSURE_TENDENCIES[code]
-        return {"code": code, "keyword": keyword, "description": description}
+        keyword, symbol, description = WMO_PRESSURE_TENDENCIES[code]
+        return {"code": code, "keyword": keyword, "symbol": symbol, "description": description}
 
     def read_cpu_temperature(self):
         with self._temperature_lock:
@@ -214,6 +260,21 @@ class Weather:
             self.hat.update()
             self.hat_pressure_raw = self.hat.pressure
             self.hat_light_lux = self.hat.lux
+            self.hat_wind_direction_degrees = self.hat.wind_direction
+            direction_name = self.hat.degrees_to_cardinal(self.hat_wind_direction_degrees)
+            self.hat_wind_direction_cardinal = WIND_DIRECTION_TOKENS[direction_name]
+            self.hat_dewpoint_celsius = self.hat.dewpoint
+            self.hat_humidity_raw, self.hat_humidity = helpers.adjusted_humidity(self.hat.humidity)
+            if self.hat.updated_wind_rain:
+                self.hat_wind_speed_m_s = self.hat.wind_speed
+                self.hat_rain_rate_mm_s = self.hat.rain
+                self.hat_rain_total_mm = self.hat.rain_total
+                self.hat_rain_total_period_minutes = self.config["sampling"]["hat_measurements_interval_minutes"]
+            else:
+                self.hat_wind_speed_m_s = None
+                self.hat_rain_rate_mm_s = None
+                self.hat_rain_total_mm = None
+                self.hat_rain_total_period_minutes = None
             self.hat_temperature_raw, self.hat_temperature = helpers.adjusted_temperature(self.hat.temperature)
             altitude = self.config["barometer"]["altitude_meters_asl"]
             pressure_factor = helpers.barometer_altitude_comp_factor(altitude, self.hat_temperature)
@@ -221,16 +282,27 @@ class Weather:
             self.pressure_tendency_buffer.append((time.monotonic(), self.hat_pressure_corrected))
             self._update_pressure_tendency()
             self._write_debug_data()
+            self._write_as_vars()
             tendency = self.pressure_tendency or {}
             return {
                 "temperature_raw_celsius": self.hat_temperature_raw,
                 "temperature_corrected_celsius": self.hat_temperature,
+                "dewpoint_celsius": self.hat_dewpoint_celsius,
+                "humidity_raw_percent": self.hat_humidity_raw,
+                "humidity_corrected_percent": self.hat_humidity,
                 "pressure_raw_hpa": self.hat_pressure_raw,
                 "pressure_corrected_hpa": self.hat_pressure_corrected,
                 "pressure_tendency": tendency.get("keyword"),
+                "pressure_tendency_symbol": tendency.get("symbol"),
                 "pressure_tendency_code": tendency.get("code"),
                 "pressure_tendency_description": tendency.get("description"),
                 "light_lux": self.hat_light_lux,
+                "wind_speed_m_s": self.hat_wind_speed_m_s,
+                "wind_direction_degrees": self.hat_wind_direction_degrees,
+                "wind_direction_cardinal": self.hat_wind_direction_cardinal,
+                "rain_rate_mm_s": self.hat_rain_rate_mm_s,
+                "rain_interval_total_mm": self.hat_rain_total_mm,
+                "rain_interval_minutes": self.hat_rain_total_period_minutes,
             }
 
     def _write_debug_data(self):
@@ -250,20 +322,58 @@ class Weather:
                     "raw_celsius": self.hat_temperature_raw,
                     "corrected_celsius": self.hat_temperature,
                 },
+                "dewpoint_celsius": self.hat_dewpoint_celsius,
+                "humidity": {
+                    "raw_percent": self.hat_humidity_raw,
+                    "corrected_percent": self.hat_humidity,
+                },
                 "pressure": {
                     "raw_hpa": self.hat_pressure_raw,
                     "corrected_hpa": self.hat_pressure_corrected,
                     "tendency": tendency.get("keyword"),
+                    "tendency_symbol": tendency.get("symbol"),
                     "tendency_code": tendency.get("code"),
                     "tendency_description": tendency.get("description"),
                 },
                 "light": {
                     "lux": self.hat_light_lux,
                 },
+                "wind": {
+                    "speed_m_s": self.hat_wind_speed_m_s,
+                    "direction_degrees": self.hat_wind_direction_degrees,
+                    "direction_cardinal": self.hat_wind_direction_cardinal,
+                },
+                "rain": {
+                    "rate_mm_s": self.hat_rain_rate_mm_s,
+                    "interval_total_mm": self.hat_rain_total_mm,
+                    "interval_minutes": self.hat_rain_total_period_minutes,
+                },
             },
         }
         self.debug_data_path.parent.mkdir(parents=True, exist_ok=True)
         self.debug_data_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    def _write_as_vars(self):
+        if not self.config.get("publish_as_vars", False):
+            return
+
+        variables = {
+            "AS_TEMPERATURE": self.hat_temperature,
+            "AS_DEWPOINT": self.hat_dewpoint_celsius,
+            "AS_HUMIDITY": self.hat_humidity,
+            "AS_PRESSURE": self.hat_pressure_corrected,
+            "AS_LIGHT": self.hat_light_lux,
+            "AS_WIND_SPEED": self.hat_wind_speed_m_s,
+            "AS_WIND_DIRECTION": self.hat_wind_direction_cardinal,
+            "AS_WIND_DIRECTION_DEGREES": self.hat_wind_direction_degrees,
+            "AS_RAIN": self.hat_rain_rate_mm_s,
+            "AS_RAIN_TOTAL": self.hat_rain_total_mm,
+            "AS_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
+        }
+        self.variables_path.mkdir(parents=True, exist_ok=True)
+        for name, value in variables.items():
+            if value is not None:
+                (self.variables_path / f"{name}.txt").write_text(str(value), encoding="utf-8")
 
     def _run(self):
         next_cpu_temp_read = time.monotonic()

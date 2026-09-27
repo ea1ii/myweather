@@ -1,21 +1,49 @@
-# myweather
+# systemd service
 
-Weather HAT integration for AllSky running on Raspberry Pi.
+The `weatherhat` service runs `/home/pi/myweather/src/CGweather.py`. Install or refresh the unit from the project root:
 
-## Features
-- Reads Weather HAT sensor data
-- Generates AllSky AS_ variables
-- Runs as a systemd daemon
-- Fully modular and version-controlled
+```bash
+sudo install -m 644 systemd/weatherhat.service /etc/systemd/system/weatherhat.service
+sudo systemctl daemon-reload
+```
 
-## Folder Structure
-src/       → Python daemon and helpers
-config/    → Settings (future)
-systemd/   → Service file
-data/      → Logs and cache
+## Service Commands
 
-## Deployment
-Copy systemd/weatherhat.service to /etc/systemd/system/
-Enable and start the service:
-sudo systemctl enable weatherhat
+Start now:
+
+```bash
 sudo systemctl start weatherhat
+```
+
+Stop now:
+
+```bash
+sudo systemctl stop weatherhat
+```
+
+Enable automatic startup at boot:
+
+```bash
+sudo systemctl enable weatherhat
+```
+
+Disable automatic startup at boot. This does not stop a currently running service:
+
+```bash
+sudo systemctl disable weatherhat
+```
+
+Stop now and disable boot startup together:
+
+```bash
+sudo systemctl disable --now weatherhat
+```
+
+Check status and recent logs:
+
+```bash
+sudo systemctl status weatherhat
+sudo journalctl -u weatherhat -f
+```
+
+The unit uses `Restart=always`, so systemd restarts the process if it exits unexpectedly. An explicit `systemctl stop` remains stopped.

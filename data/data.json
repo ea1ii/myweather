@@ -10,15 +10,31 @@
       "raw_celsius": 12.0,
       "corrected_celsius": 11.0
     },
+    "dewpoint_celsius": null,
+    "humidity": {
+      "raw_percent": null,
+      "corrected_percent": null
+    },
     "pressure": {
       "raw_hpa": 1013.25,
       "corrected_hpa": 1017.8888191004125,
       "tendency": null,
+      "tendency_symbol": null,
       "tendency_code": null,
       "tendency_description": null
     },
     "light": {
       "lux": null
+    },
+    "wind": {
+      "speed_m_s": null,
+      "direction_degrees": null,
+      "direction_cardinal": null
+    },
+    "rain": {
+      "rate_mm_s": null,
+      "interval_total_mm": null,
+      "interval_minutes": null
     }
   }
 }

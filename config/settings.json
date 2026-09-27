@@ -50,7 +50,7 @@
   "sampling": {
     "weather_interval_seconds": 5.0,
     "cpu_temperature_interval_seconds": 5.0,
-    "hat_measurements_interval_minutes": 5.0,
+    "hat_measurements_interval_minutes": 1.0,
     "cpu_temperature_samples_to_average": 5
   }
 }
