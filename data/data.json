@@ -1,41 +1,41 @@
 {
-  "timestamp": "2026-09-28T16:53:07Z",
+  "timestamp": "2026-09-28T17:11:52Z",
   "cpu": {
     "temperature": {
-      "sample_celsius": 42.842,
-      "average_celsius": 42.4524
+      "sample_celsius": 43.816,
+      "average_celsius": null
     }
   },
   "hat": {
     "temperature": {
-      "raw_celsius": 14.635408362839371,
-      "corrected_celsius": 13.635408362839371
+      "raw_celsius": null,
+      "corrected_celsius": null
     },
-    "dewpoint_celsius": 16.4232344522945,
+    "dewpoint_celsius": null,
     "humidity": {
-      "raw_percent": 71.43913044727566,
-      "corrected_percent": 71.43913044727566
+      "raw_percent": null,
+      "corrected_percent": null
     },
     "pressure": {
-      "raw_hpa": 695.1117156173573,
-      "corrected_hpa": 698.2647496467375,
+      "raw_hpa": null,
+      "corrected_hpa": null,
       "tendency": null,
       "tendency_symbol": null,
       "tendency_code": null,
       "tendency_description": null
     },
     "light": {
-      "lux": 24.41785
+      "lux": null
     },
     "wind": {
-      "speed_m_s": 0.0,
+      "speed_m_s": null,
       "direction_degrees": null,
       "direction_cardinal": null
     },
     "rain": {
-      "rate_mm_s": 0.0,
-      "interval_total_mm": 0.0,
-      "interval_minutes": 1.0,
+      "rate_mm_s": null,
+      "interval_total_mm": null,
+      "interval_minutes": null,
       "event_total_mm": 0.0,
       "event_started_at": null,
       "event_last_rain_at": null

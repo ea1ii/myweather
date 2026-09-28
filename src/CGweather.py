@@ -543,14 +543,21 @@ class Weather:
             "EA1II_RAIN_EVENT_STARTED_AT": self.hat_rain_event_started_at,
             "EA1II_RAIN_EVENT_LAST_RAIN_AT": self.hat_rain_event_last_rain_at,
         }
+        string_variables = {
+            "EA1II_TENDENCY",
+            "EA1II_TENDENCY_SYMBOL",
+            "EA1II_WIND_DIRECTION",
+            "EA1II_RAIN_EVENT_STARTED_AT",
+            "EA1II_RAIN_EVENT_LAST_RAIN_AT",
+        }
         expiry_seconds = max(
             180,
             int(self.config["sampling"]["hat_measurements_interval_minutes"] * 60 * 3),
         )
         extra_data = {
-            name: {"value": value, "expires": expiry_seconds}
+            name: {"value": "" if value is None else value, "expires": expiry_seconds}
             for name, value in variables.items()
-            if value is not None
+            if value is not None or name in string_variables
         }
 
         self.allsky_extra_path.parent.mkdir(parents=True, exist_ok=True)
