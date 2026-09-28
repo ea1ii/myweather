@@ -14,7 +14,7 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 
 The service reads CPU temperature every 5 seconds and reports a rolling average after the configured five-sample buffer fills. Weather HAT measurements are updated every minute by default.
 
-HAT output includes corrected temperature and pressure, dew point, humidity, light, wind speed and direction, and rain rate and interval total. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
+HAT output includes corrected temperature and pressure, dew point, humidity, light, wind speed and direction, and rain rate and interval total. Rain also includes a cumulative event total with start and last-rain timestamps. The event total resets after the configured dry period. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
 
 Pressure tendency is classified over a configurable 3-, 6-, or 24-hour window and includes a keyword, WMO-style code, symbol, and description. The 3-hour window is the WMO standard interval; longer windows use the same classification over a longer period.
 
@@ -54,6 +54,10 @@ Top-level switches:
 - `available_window_hours`: supported evaluation windows. This list is used to validate `window_hours`.
 - `window_hours`: pressure-history window, currently one of 3, 6, or 24 hours. The WMO tendency standard uses 3 hours.
 - `steady_threshold_hpa`: pressure change in hPa at or below which a change is treated as steady.
+
+`rain_event`:
+
+- `dry_period_minutes`: duration without measured rain before the cumulative event total resets to zero. Defaults to 60 minutes.
 
 `temperature` and `humidity`:
 

@@ -18,6 +18,9 @@
     "window_hours": 3,
     "steady_threshold_hpa": 0.1
   },
+  "rain_event": {
+    "dry_period_minutes": 30
+  },
   "temperature": {
     "available_adjustment_methods": [
       "polynomial",
