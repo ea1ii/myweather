@@ -40,8 +40,8 @@ python src/settings.py --set publish_as_vars true
 Top-level switches:
 
 - `debug` (boolean): write the current readings to `data/data.json` after measurements.
-- `publish_as_vars` (boolean): write Allsky Extra Data to `/home/pi/allsky/config/overlay/extra/weather.json`. Disabled by default. Keys use the unique `EA1II_` prefix; Allsky exposes them to overlays with an `AS_` prefix.
-- `publish_to_influxdb` (boolean): send measurements to InfluxDB. Disabled by default; credentials come from the systemd environment file.
+- `publish_as_vars` (boolean): write non-raw weather measurements to Allsky Extra Data at `/home/pi/allsky/config/overlay/extra/weather.json`. CPU temperatures and the debug timestamp are not exported. Disabled by default. Keys use the unique `EA1II_` prefix; Allsky exposes them to overlays with an `AS_` prefix.
+- `publish_to_influxdb` (boolean): send all numeric measurements, including raw readings, to InfluxDB. Disabled by default; credentials come from the systemd environment file.
 - `influxdb.measurement`: InfluxDB measurement name; defaults to `weatherhat`.
 - `influxdb.station`: station tag attached to each point; defaults to `CGallsky`.
 
@@ -57,7 +57,7 @@ Top-level switches:
 
 `rain_event`:
 
-- `dry_period_minutes`: duration without measured rain before the cumulative event total resets to zero. Defaults to 60 minutes.
+- `dry_period_minutes`: duration without measured rain before the cumulative event total resets to zero. Defaults to 30 minutes.
 
 `temperature` and `humidity`:
 
@@ -74,7 +74,7 @@ Top-level switches:
 - `hat_measurements_interval_minutes`: time between Weather HAT updates. It also defines the interval represented by each rain-total reading and determines pressure-history buffer capacity.
 - `weather_interval_seconds` is present for reference but is not currently used by the runtime.
 
-Debug output to [data/data.json](data/data.json) is controlled by `debug`. When publishing is enabled, the Extra Data JSON contains temperature, dew point, humidity, pressure, light, wind, and rain values with expiry times. In an Allsky overlay, reference them by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally.
+Debug output to [data/data.json](data/data.json) is controlled by `debug`. Allsky publishing includes non-raw weather measurements with expiry times; unset strings are exported as `-` and unset numeric readings as `0`. It excludes the debug timestamp and CPU temperatures. `EA1II_TENDENCY_SYMBOL_ALT` provides an ASCII alternative to the Unicode tendency symbol (`^` rising, `v` falling, `=` steady). In an Allsky overlay, reference values by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally. InfluxDB receives only numeric debug measurements, including raw HAT readings; string fields are excluded.
 
 ### InfluxDB Cloud Setup
 

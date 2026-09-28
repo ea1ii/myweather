@@ -60,6 +60,7 @@ WMO_PRESSURE_TENDENCIES = {
     7: ("falling", "↘", "Decreasing steadily or unsteadily; pressure is lower than at the start of the window."),
     8: ("steady_or_rising_then_falling", "→↘", "Steady or increasing, then decreasing; pressure is lower than at the start of the window."),
 }
+ASCII_TENDENCY_SYMBOL_TRANSLATION = str.maketrans({"↗": "^", "↘": "v", "→": "="})
 
 
 class Weather:
@@ -189,23 +190,18 @@ class Weather:
             "pressure_raw_hpa": self.hat_pressure_raw,
             "pressure_corrected_hpa": self.hat_pressure_corrected,
             "pressure_tendency_code": tendency.get("code"),
-            "pressure_tendency": tendency.get("keyword"),
-            "pressure_tendency_symbol": tendency.get("symbol"),
             "light_lux": self.hat_light_lux,
             "wind_speed_m_s": self.hat_wind_speed_m_s,
             "wind_direction_degrees": self.hat_wind_direction_degrees,
-            "wind_direction_cardinal": self.hat_wind_direction_cardinal,
             "rain_rate_mm_s": self.hat_rain_rate_mm_s,
             "rain_interval_total_mm": self.hat_rain_total_mm,
             "rain_interval_minutes": self.hat_rain_total_period_minutes,
             "rain_event_total_mm": self.hat_rain_event_total_mm,
-            "rain_event_started_at": self.hat_rain_event_started_at,
-            "rain_event_last_rain_at": self.hat_rain_event_last_rain_at,
         }
         point = Point(self._influxdb_measurement).tag("station", self._influxdb_station)
         has_fields = False
         for name, value in fields.items():
-            if value is None:
+            if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
                 continue
             if isinstance(value, float) and not math.isfinite(value):
                 continue
@@ -392,7 +388,13 @@ class Weather:
             code = 4
 
         keyword, symbol, description = WMO_PRESSURE_TENDENCIES[code]
-        return {"code": code, "keyword": keyword, "symbol": symbol, "description": description}
+        return {
+            "code": code,
+            "keyword": keyword,
+            "symbol": symbol,
+            "symbol_ascii": symbol.translate(ASCII_TENDENCY_SYMBOL_TRANSLATION),
+            "description": description,
+        }
 
     def read_cpu_temperature(self):
         with self._temperature_lock:
@@ -454,6 +456,7 @@ class Weather:
                 "pressure_corrected_hpa": self.hat_pressure_corrected,
                 "pressure_tendency": tendency.get("keyword"),
                 "pressure_tendency_symbol": tendency.get("symbol"),
+                "pressure_tendency_symbol_ascii": tendency.get("symbol_ascii"),
                 "pressure_tendency_code": tendency.get("code"),
                 "pressure_tendency_description": tendency.get("description"),
                 "light_lux": self.hat_light_lux,
@@ -496,6 +499,7 @@ class Weather:
                     "corrected_hpa": self.hat_pressure_corrected,
                     "tendency": tendency.get("keyword"),
                     "tendency_symbol": tendency.get("symbol"),
+                    "tendency_symbol_ascii": tendency.get("symbol_ascii"),
                     "tendency_code": tendency.get("code"),
                     "tendency_description": tendency.get("description"),
                 },
@@ -532,6 +536,9 @@ class Weather:
             "EA1II_PRESSURE": self.hat_pressure_corrected,
             "EA1II_TENDENCY": tendency.get("keyword"),
             "EA1II_TENDENCY_SYMBOL": tendency.get("symbol"),
+            "EA1II_TENDENCY_SYMBOL_ALT": tendency.get("symbol_ascii"),
+            "EA1II_TENDENCY_CODE": tendency.get("code"),
+            "EA1II_TENDENCY_DESCRIPTION": tendency.get("description"),
             "EA1II_LIGHT": self.hat_light_lux,
             "EA1II_WIND_SPEED": self.hat_wind_speed_m_s,
             "EA1II_WIND_DIRECTION": self.hat_wind_direction_cardinal,
@@ -546,6 +553,8 @@ class Weather:
         string_variables = {
             "EA1II_TENDENCY",
             "EA1II_TENDENCY_SYMBOL",
+            "EA1II_TENDENCY_SYMBOL_ALT",
+            "EA1II_TENDENCY_DESCRIPTION",
             "EA1II_WIND_DIRECTION",
             "EA1II_RAIN_EVENT_STARTED_AT",
             "EA1II_RAIN_EVENT_LAST_RAIN_AT",
@@ -555,9 +564,11 @@ class Weather:
             int(self.config["sampling"]["hat_measurements_interval_minutes"] * 60 * 3),
         )
         extra_data = {
-            name: {"value": "" if value is None else value, "expires": expiry_seconds}
+            name: {
+                "value": value if value is not None else ("-" if name in string_variables else 0),
+                "expires": expiry_seconds,
+            }
             for name, value in variables.items()
-            if value is not None or name in string_variables
         }
 
         self.allsky_extra_path.parent.mkdir(parents=True, exist_ok=True)
