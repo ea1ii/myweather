@@ -77,7 +77,6 @@ class Weather:
         self._configure_influxdb()
         if hat is None:
             from weatherhat import WeatherHAT
-
             hat = WeatherHAT()
         self.hat = hat
         self.cpu_temperature = None
@@ -96,6 +95,11 @@ class Weather:
         self.hat_rain_rate_mm_s = None
         self.hat_rain_total_mm = None
         self.hat_rain_total_period_minutes = None
+        self.hat_rain_event_total_mm = 0.0
+        self.hat_rain_event_started_at = None
+        self.hat_rain_event_last_rain_at = None
+        self._rain_event_last_rain_monotonic = None
+        self._rain_event_dry_period_seconds(self.config)
         self.pressure_tendency_buffer = deque()
         self.pressure_tendency = None
         self.debug_data_path = Path(__file__).resolve().parent.parent / "data" / "data.json"
@@ -194,6 +198,9 @@ class Weather:
             "rain_rate_mm_s": self.hat_rain_rate_mm_s,
             "rain_interval_total_mm": self.hat_rain_total_mm,
             "rain_interval_minutes": self.hat_rain_total_period_minutes,
+            "rain_event_total_mm": self.hat_rain_event_total_mm,
+            "rain_event_started_at": self.hat_rain_event_started_at,
+            "rain_event_last_rain_at": self.hat_rain_event_last_rain_at,
         }
         point = Point(self._influxdb_measurement).tag("station", self._influxdb_station)
         has_fields = False
@@ -230,6 +237,7 @@ class Weather:
             sample_count = new_config["sampling"]["cpu_temperature_samples_to_average"]
             if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
                 return False
+            self._rain_event_dry_period_seconds(new_config)
             pressure_buffer_capacity = self._pressure_tendency_buffer_capacity(new_config)
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             return False
@@ -279,6 +287,30 @@ class Weather:
                 not math.isfinite(threshold) or threshold < 0):
             raise ValueError("Pressure tendency threshold must be a non-negative number")
         return math.ceil(window_hours * 60 / interval_minutes) + 1
+
+    def _rain_event_dry_period_seconds(self, config):
+        dry_period_minutes = config["rain_event"]["dry_period_minutes"]
+        if (isinstance(dry_period_minutes, bool) or not isinstance(dry_period_minutes, (int, float)) or
+                not math.isfinite(dry_period_minutes) or dry_period_minutes <= 0):
+            raise ValueError("Rain event dry period must be a positive number of minutes")
+        return dry_period_minutes * 60
+
+    def _update_rain_event(self, interval_total_mm, observed_at, observed_at_monotonic):
+        dry_period_seconds = self._rain_event_dry_period_seconds(self.config)
+        if (self._rain_event_last_rain_monotonic is not None and
+                observed_at_monotonic - self._rain_event_last_rain_monotonic >= dry_period_seconds):
+            self.hat_rain_event_total_mm = 0.0
+            self.hat_rain_event_started_at = None
+            self.hat_rain_event_last_rain_at = None
+            self._rain_event_last_rain_monotonic = None
+
+        if interval_total_mm > 0:
+            timestamp = observed_at.isoformat(timespec="seconds").replace("+00:00", "Z")
+            if self._rain_event_last_rain_monotonic is None:
+                self.hat_rain_event_started_at = timestamp
+            self.hat_rain_event_total_mm += interval_total_mm
+            self.hat_rain_event_last_rain_at = timestamp
+            self._rain_event_last_rain_monotonic = observed_at_monotonic
 
     def resize_pressure_tendency_buffer(self, sample_count):
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 2:
@@ -376,18 +408,29 @@ class Weather:
             self.hat.update()
             self.hat_pressure_raw = self.hat.pressure
             self.hat_light_lux = self.hat.lux
-            self.hat_wind_direction_degrees = self.hat.wind_direction
-            direction_name = self.hat.degrees_to_cardinal(self.hat_wind_direction_degrees)
-            self.hat_wind_direction_cardinal = WIND_DIRECTION_TOKENS[direction_name]
             self.hat_dewpoint_celsius = self.hat.dewpoint
             self.hat_humidity_raw, self.hat_humidity = helpers.adjusted_humidity(self.hat.humidity)
             if self.hat.updated_wind_rain:
                 self.hat_wind_speed_m_s = self.hat.wind_speed
+                if self.hat_wind_speed_m_s > 0:
+                    self.hat_wind_direction_degrees = self.hat.wind_direction
+                    direction_name = self.hat.degrees_to_cardinal(self.hat_wind_direction_degrees)
+                    self.hat_wind_direction_cardinal = WIND_DIRECTION_TOKENS[direction_name]
+                else:
+                    self.hat_wind_direction_degrees = None
+                    self.hat_wind_direction_cardinal = None
                 self.hat_rain_rate_mm_s = self.hat.rain
                 self.hat_rain_total_mm = self.hat.rain_total
                 self.hat_rain_total_period_minutes = self.config["sampling"]["hat_measurements_interval_minutes"]
+                self._update_rain_event(
+                    self.hat_rain_total_mm,
+                    datetime.now(timezone.utc),
+                    time.monotonic(),
+                )
             else:
                 self.hat_wind_speed_m_s = None
+                self.hat_wind_direction_degrees = None
+                self.hat_wind_direction_cardinal = None
                 self.hat_rain_rate_mm_s = None
                 self.hat_rain_total_mm = None
                 self.hat_rain_total_period_minutes = None
@@ -420,6 +463,9 @@ class Weather:
                 "rain_rate_mm_s": self.hat_rain_rate_mm_s,
                 "rain_interval_total_mm": self.hat_rain_total_mm,
                 "rain_interval_minutes": self.hat_rain_total_period_minutes,
+                "rain_event_total_mm": self.hat_rain_event_total_mm,
+                "rain_event_started_at": self.hat_rain_event_started_at,
+                "rain_event_last_rain_at": self.hat_rain_event_last_rain_at,
             }
 
     def _write_debug_data(self):
@@ -428,6 +474,7 @@ class Weather:
 
         tendency = self.pressure_tendency or {}
         data = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "cpu": {
                 "temperature": {
                     "sample_celsius": self.cpu_temperature_sample,
@@ -464,6 +511,9 @@ class Weather:
                     "rate_mm_s": self.hat_rain_rate_mm_s,
                     "interval_total_mm": self.hat_rain_total_mm,
                     "interval_minutes": self.hat_rain_total_period_minutes,
+                    "event_total_mm": self.hat_rain_event_total_mm,
+                    "event_started_at": self.hat_rain_event_started_at,
+                    "event_last_rain_at": self.hat_rain_event_last_rain_at,
                 },
             },
         }
@@ -479,6 +529,8 @@ class Weather:
             "EA1II_DEWPOINT": self.hat_dewpoint_celsius,
             "EA1II_HUMIDITY": self.hat_humidity,
             "EA1II_PRESSURE": self.hat_pressure_corrected,
+            "EA1II_TENDENCY": self.tendency.get("keyword"),
+            "EA1II_TENDENCY_SYMBOL": self.tendency.get("symbol"),
             "EA1II_LIGHT": self.hat_light_lux,
             "EA1II_WIND_SPEED": self.hat_wind_speed_m_s,
             "EA1II_WIND_DIRECTION": self.hat_wind_direction_cardinal,
@@ -486,6 +538,9 @@ class Weather:
             "EA1II_RAIN_RATE": self.hat_rain_rate_mm_s,
             "EA1II_RAIN_TOTAL": self.hat_rain_total_mm,
             "EA1II_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
+            "EA1II_RAIN_EVENT_TOTAL": self.hat_rain_event_total_mm,
+            "EA1II_RAIN_EVENT_STARTED_AT": self.hat_rain_event_started_at,
+            "EA1II_RAIN_EVENT_LAST_RAIN_AT": self.hat_rain_event_last_rain_at,
         }
         expiry_seconds = max(
             180,

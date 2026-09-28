@@ -1,9 +1,9 @@
 {
-  "timestamp": "2026-09-28T16:47:00Z",
+  "timestamp": "2026-09-28T16:50:59Z",
   "cpu": {
     "temperature": {
-      "sample_celsius": 44.79,
-      "average_celsius": 43.32899999999999
+      "sample_celsius": 43.816,
+      "average_celsius": 43.329
     }
   },
   "hat": {
