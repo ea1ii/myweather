@@ -5,7 +5,7 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 ## Project
 
 - Author: Carlos Gil (ea1ii)
-- Version: 0.1
+- Version: 0.2
 - License: MIT (see [LICENSE](LICENSE))
 - GitHub: https://github.com/ea1ii/myweather
 - Development conversation: [verbatim indexed transcript](DEVELOPMENT_CONVERSATION.md)

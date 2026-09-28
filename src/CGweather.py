@@ -6,7 +6,7 @@
 
 # Author: Carlos Gil (ea1ii)
 # Date: 2026-09-27
-# Version: 0.1
+# Version: 0.2
 # License: MIT (see ../LICENSE)
 # GitHub: https://github.com/ea1ii/myweather
 #
@@ -524,13 +524,14 @@ class Weather:
         if not self.config.get("publish_as_vars", False):
             return
 
+        tendency = self.pressure_tendency or {}
         variables = {
             "EA1II_TEMPERATURE": self.hat_temperature,
             "EA1II_DEWPOINT": self.hat_dewpoint_celsius,
             "EA1II_HUMIDITY": self.hat_humidity,
             "EA1II_PRESSURE": self.hat_pressure_corrected,
-            "EA1II_TENDENCY": self.tendency.get("keyword"),
-            "EA1II_TENDENCY_SYMBOL": self.tendency.get("symbol"),
+            "EA1II_TENDENCY": tendency.get("keyword"),
+            "EA1II_TENDENCY_SYMBOL": tendency.get("symbol"),
             "EA1II_LIGHT": self.hat_light_lux,
             "EA1II_WIND_SPEED": self.hat_wind_speed_m_s,
             "EA1II_WIND_DIRECTION": self.hat_wind_direction_cardinal,
