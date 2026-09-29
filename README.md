@@ -5,17 +5,24 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 ## Project
 
 - Author: Carlos Gil (ea1ii)
-- Version: 0.4
+- Version: 0.4.1
 - License: MIT (see [LICENSE](LICENSE))
 - GitHub: https://github.com/ea1ii/myweather
 - Development conversation: [verbatim indexed transcript](DEVELOPMENT_CONVERSATION.md)
 
 ## Changelog
 
+### 0.4.1 - 2026-09-29
+
+- Add standalone calibration tool version and document its compatibility with CGweather 0.4.1.
+
 ### 0.4 - 2026-09-29
 
 - Add opt-in timestamped CSV logging for raw temperature and humidity.
-- Add configurable temperature and humidity polynomial degrees from 2 to 6 with seven coefficients.
+- Replace linear/polynomial selectors with per-channel calibration switches and degree-0-to-4 polynomial corrections.
+- Add a calibration CLI for fitting temperature and humidity corrections from logged/reference samples.
+- Add optional SVG calibration plots for remote viewing.
+- Add optional local MAD-based rejection of magnitude outliers in calibration data.
 - Add rain-event duration to debug, InfluxDB, and Allsky outputs.
 
 ### 0.3 - 2026-09-29
@@ -63,6 +70,26 @@ python src/settings.py --set barometer.altitude_meters_asl YOUR_ALTITUDE_METERS
 python src/settings.py --set publish_as_vars true
 ```
 
+## Calibration CLI
+
+Use the executable [src/calibrate.py](src/calibrate.py) to pair raw datalog samples with the reference readings in the `sample.txt` format. Datalog UTC timestamps are converted to local time; reference timestamps are interpreted in the system's local timezone. Rows are paired with the nearest reference reading within 30 seconds by default.
+
+```bash
+./src/calibrate.py \
+	--input data/logs/datalog_sample.csv \
+	--calibration data/logs/sample.txt \
+	--channel both \
+	--all-degrees \
+	--show-fit \
+	--plot \
+	--reject-outliers \
+	--report-json data/logs/calibration-report.json
+```
+
+Channels are `temperature`, `humidity`, or `both` (default). Pressure calibration is not supported because the supplied calibration format has no pressure reference. Timestamp pairs beyond `--max-time-difference-seconds` are skipped and counted. `--reject-outliers` additionally filters local raw/reference magnitude spikes with a rolling median/MAD test; it defaults to off. The default cutoff is 3.5 robust sigma with three neighboring samples on each side and minimum deviations of `0.5 C` for temperature and `2 %RH` for humidity. Rejected rows and reasons are recorded per channel in the JSON report. Without `--all-degrees`, the degree configured for each channel is used. `--all-degrees` compares the configured degrees and selects by cross-validated RMSE. Add `--update-config` to write the selected coefficients and degree and switch the selected channels to polynomial correction. The configuration is never changed unless this option is supplied. JSON report filenames receive a UTC timestamp before the extension, so repeated runs do not overwrite earlier reports. `--plot` writes one composite SVG per channel: raw HAT, reference, and corrected values over time above the calibration scatter and all fitted-degree curves, with the suggested degree highlighted. `--plot-data` separately writes time-series SVGs for raw, calibration, or both (default when the option is specified). Reference readings are limited to the datalog's time range. SVGs are saved beside the report (or beside the input file if no report was requested) and can be opened in VS Code or a browser on the PC when using Remote SSH.
+
+Timestamp pairs outside `--max-time-difference-seconds` are always skipped. Add `--reject-outliers` to also filter local magnitude spikes from the raw and reference series using a rolling median/MAD test; `--outlier-sigma` and `--outlier-window` adjust its sensitivity and neighborhood. When enabled, the fit and plots use only retained matched pairs, and the JSON report lists rejected values and reasons. Filtering is off by default.
+
 ### Parameter Reference
 
 Top-level switches:
@@ -91,16 +118,17 @@ Top-level switches:
 
 `temperature` and `humidity`:
 
-- `adjustment_method`: choose `linear` or `polynomial`; each group's `available_adjustment_methods` lists the accepted values and is used by the settings CLI for validation.
-- `linear.slope` and `linear.intercept`: apply `slope * raw_value + intercept`.
-- Temperature `polynomial.degree`: polynomial degree from 2 to 6 (default 3). `polynomial.coef_0` through `coef_6` are the coefficients for the constant through sixth-power terms; only coefficients up to the selected degree are used.
-- Humidity `polynomial.degree`: polynomial degree from 2 to 6 (default 2). `polynomial.coef_0` through `coef_6` are the coefficients for the constant through sixth-power terms; only coefficients up to the selected degree are used. Corrected humidity is capped at 100%.
+- `calibration_enabled`: apply the channel's polynomial correction when `true`; when `false`, use the raw reading unchanged.
+- `polynomial.available_degrees`: informational list of supported degrees, 0 through 4.
+- `polynomial.degree`: selected degree from 0 to 4. Degree 0 applies a constant offset; degree 1 is linear. Both channels currently use degree 1 with coefficients fitted from the calibration samples.
+- `polynomial.coef_0` through `coef_4`: coefficients for the constant through fourth-power terms; only coefficients up to `degree` are used. Corrected humidity remains capped at 100%.
 
 `sampling`:
 
 - `cpu_temperature_interval_seconds`: time between CPU temperature samples.
 - `cpu_temperature_samples_to_average`: rolling CPU sample count; no average is available until the buffer fills. The buffer resizes when this setting changes.
 - `hat_measurements_interval_minutes`: time between Weather HAT updates. It also defines the interval represented by each rain-total reading and determines pressure-history buffer capacity.
+- `datalogging_interval_minutes`: minimum time between raw temperature/humidity CSV samples when `datalogging` is enabled. Defaults to 1 minute; logging still occurs only on HAT measurement updates.
 
 Debug output to [data/data.json](data/data.json) is controlled by `debug`. Allsky publishing includes non-raw weather measurements with expiry times; unset strings are exported as `-` and unset numeric readings as `0`. It excludes the debug timestamp and CPU temperatures. `EA1II_TENDENCY_SYMBOL_ALT` provides an ASCII alternative to the Unicode tendency symbol (`^` rising, `v` falling, `=` steady). In an Allsky overlay, reference values by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally. InfluxDB receives only numeric debug measurements, including raw HAT readings; string fields are excluded.
 

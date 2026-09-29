@@ -53,19 +53,9 @@ def validate_value(config, dotted_path, current, new_value):
     if not (type(current) is type(new_value) or (is_number(current) and is_number(new_value))):
         raise ValueError(f"Value must have the same type as the current value ({type(current).__name__})")
 
-    if dotted_path.endswith(".adjustment_method"):
-        group_name = dotted_path.rsplit(".", 1)[0].split(".")[-1]
-        methods = config.get(group_name, {}).get("available_adjustment_methods", [])
-        if new_value not in methods:
-            raise ValueError(f"Method must be one of: {', '.join(methods)}")
-
-    if dotted_path == "temperature.polynomial.degree":
-        if type(new_value) is not int or not 2 <= new_value <= 6:
-            raise ValueError("Temperature polynomial degree must be an integer from 2 to 6")
-
-    if dotted_path == "humidity.polynomial.degree":
-        if type(new_value) is not int or not 2 <= new_value <= 6:
-            raise ValueError("Humidity polynomial degree must be an integer from 2 to 6")
+    if dotted_path.endswith(".polynomial.degree"):
+        if type(new_value) is not int or not 0 <= new_value <= 4:
+            raise ValueError("Polynomial degree must be an integer from 0 to 4")
 
 
 def main():

@@ -6,7 +6,7 @@
     "station": "CGallsky"
   },
   "debug": true,
-  "datalogging": true,
+  "datalogging": false,
   "barometer": {
     "altitude_meters_asl": 38
   },
@@ -24,62 +24,43 @@
     "dry_period_minutes": 30
   },
   "temperature": {
-    "available_adjustment_methods": [
-      "polynomial",
-      "linear"
-    ],
-    "adjustment_method": "linear",
-    "linear": {
-      "slope": 1.0,
-      "intercept": -1.0
-    },
+    "calibration_enabled": true,
     "polynomial": {
       "available_degrees": [
+        0,
+        1,
         2,
         3,
-        4,
-        5,
-        6
+        4
       ],
-      "degree": 3,
-      "coef_0": 0.0,
-      "coef_1": 1.0,
+      "degree": 1,
+      "coef_0": 9.736419207501541,
+      "coef_1": 0.5847072123181266,
       "coef_2": 0.0,
       "coef_3": 0.0,
-      "coef_4": 0.0,
-      "coef_5": 0.0,
-      "coef_6": 0.0
+      "coef_4": 0.0
     }
   },
   "humidity": {
-    "available_adjustment_methods": [
-      "polynomial",
-      "linear"
-    ],
-    "adjustment_method": "polynomial",
-    "linear": {
-      "slope": 1.0,
-      "intercept": 0.0
-    },
+    "calibration_enabled": true,
     "polynomial": {
         "available_degrees": [
+          0,
+          1,
           2,
           3,
-          4,
-          5,
-          6
+          4
         ],
-        "degree": 2,
-        "coef_0": 0.0,
-        "coef_1": 1.0,
+        "degree": 1,
+        "coef_0": 62.08651110224579,
+        "coef_1": 0.5314267583684644,
         "coef_2": 0.0,
         "coef_3": 0.0,
-        "coef_4": 0.0,
-        "coef_5": 0.0,
-        "coef_6": 0.0
+        "coef_4": 0.0
     }
   },
   "sampling": {
+    "datalogging_interval_minutes": 1.0,
     "cpu_temperature_interval_seconds": 5.0,
     "hat_measurements_interval_minutes": 1.0,
     "cpu_temperature_samples_to_average": 5

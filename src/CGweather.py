@@ -6,7 +6,7 @@
 
 # Author: Carlos Gil (ea1ii)
 # Date: 2026-09-27
-# Version: 0.4
+# Version: 0.4.1
 # License: MIT (see ../LICENSE)
 # GitHub: https://github.com/ea1ii/myweather
 #
@@ -71,8 +71,8 @@ class Weather:
         self.allsky_extra_path = Path("/home/pi/allsky/config/overlay/extra/weather.json")
         self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
-        helpers.validate_temperature_degree(self.config["temperature"])
-        helpers.validate_humidity_degree(self.config["humidity"])
+        helpers.validate_calibration_settings(self.config["temperature"], "Temperature")
+        helpers.validate_calibration_settings(self.config["humidity"], "Humidity")
         self._config_mtime_ns = self.config_path.stat().st_mtime_ns
         self._influxdb_client = None
         self._influxdb_write_api = None
@@ -108,11 +108,13 @@ class Weather:
         self._rain_event_last_rain_monotonic = None
         self._rain_event_dry_period_seconds(self.config)
         self._pressure_history_restore_max_age_seconds(self.config)
+        self._datalog_interval_seconds(self.config)
         self.pressure_tendency_buffer = deque()
         self.pressure_tendency = None
         data_dir = Path(__file__).resolve().parent.parent / "data"
         self.datalog_dir = data_dir / "logs"
         self._datalog_path = None
+        self._datalog_last_sample_monotonic = None
         self.debug_data_path = data_dir / "data.json"
         self.pressure_history_path = data_dir / "cache" / "pressure_history.json"
         self.cpu_temperature_buffer = deque()
@@ -243,13 +245,14 @@ class Weather:
             if self.config_path.stat().st_mtime_ns != config_mtime_ns:
                 return False
 
-            helpers.validate_temperature_degree(new_config["temperature"])
-            helpers.validate_humidity_degree(new_config["humidity"])
+            helpers.validate_calibration_settings(new_config["temperature"], "Temperature")
+            helpers.validate_calibration_settings(new_config["humidity"], "Humidity")
             sample_count = new_config["sampling"]["cpu_temperature_samples_to_average"]
             if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
                 return False
             if not isinstance(new_config.get("datalogging", False), bool):
                 return False
+            self._datalog_interval_seconds(new_config)
             self._rain_event_dry_period_seconds(new_config)
             self._pressure_history_restore_max_age_seconds(new_config)
             pressure_buffer_capacity = self._pressure_tendency_buffer_capacity(new_config)
@@ -316,6 +319,13 @@ class Weather:
             raise ValueError("Pressure history restore age must be a positive number of minutes")
         return max_age_minutes * 60
 
+    def _datalog_interval_seconds(self, config):
+        interval_minutes = config["sampling"]["datalogging_interval_minutes"]
+        if (isinstance(interval_minutes, bool) or not isinstance(interval_minutes, (int, float)) or
+                not math.isfinite(interval_minutes) or interval_minutes <= 0):
+            raise ValueError("Datalogging interval must be a positive number of minutes")
+        return interval_minutes * 60
+
     def _update_rain_event(self, interval_total_mm, observed_at, observed_at_monotonic):
         dry_period_seconds = self._rain_event_dry_period_seconds(self.config)
         if (self._rain_event_last_rain_monotonic is not None and
@@ -343,8 +353,15 @@ class Weather:
     def _write_datalog(self):
         if not self.config.get("datalogging", False):
             self._datalog_path = None
+            self._datalog_last_sample_monotonic = None
             return
         if self.hat_temperature_raw is None or self.hat_humidity_raw is None:
+            return
+
+        sample_monotonic = time.monotonic()
+        interval_seconds = self._datalog_interval_seconds(self.config)
+        if (self._datalog_last_sample_monotonic is not None and
+                sample_monotonic - self._datalog_last_sample_monotonic < interval_seconds):
             return
 
         timestamp = datetime.now(timezone.utc)
@@ -364,6 +381,7 @@ class Weather:
                     self.hat_temperature_raw,
                     self.hat_humidity_raw,
                 ))
+            self._datalog_last_sample_monotonic = sample_monotonic
         except OSError as error:
             print(f"Unable to write datalog: {error}", file=sys.stderr, flush=True)
 
