@@ -201,7 +201,7 @@ class Weather:
             "temperature_corrected_celsius": self.hat_temperature,
             "dewpoint_celsius": self.hat_dewpoint_celsius,
             "humidity_raw_percent": self.hat_humidity_raw,
-            "humidity_corrected_percent": self.hat_humidity,
+            "humidity_corrected_percent_float": self.hat_humidity,
             "mixing_ratio_g_kg": self.hat_mixing_ratio_g_kg,
             "pressure_raw_hpa": self.hat_pressure_raw,
             "pressure_corrected_hpa": self.hat_pressure_corrected,
@@ -222,6 +222,8 @@ class Weather:
                 continue
             if isinstance(value, float) and not math.isfinite(value):
                 continue
+            if name == "humidity_corrected_percent_float":
+                value = float(value)
             point.field(name, value)
             has_fields = True
         if not has_fields:

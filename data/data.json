@@ -1,53 +1,54 @@
 {
-  "timestamp": "2026-09-29T17:17:58Z",
-  "process_started_at": "2026-09-29T16:45:56Z",
+  "timestamp": "2026-09-29T19:42:11Z",
+  "process_started_at": "2026-09-29T18:01:51Z",
   "uptime": {
     "days": 0,
-    "hours": 0,
-    "minutes": 32
+    "hours": 1,
+    "minutes": 40
   },
   "cpu": {
     "temperature": {
-      "sample_celsius": 45.764,
-      "average_celsius": 45.471799999999995
+      "sample_celsius": 48.686,
+      "average_celsius": 47.712
     }
   },
   "hat": {
     "temperature": {
-      "raw_celsius": 18.29939359610762,
-      "corrected_celsius": 20.436206624193808
+      "raw_celsius": 17.90115454863735,
+      "corrected_celsius": 20.20335338091124
     },
-    "dewpoint_celsius": 16.24665180082326,
+    "dewpoint_celsius": 16.174086505835668,
+    "mixing_ratio_g_kg": 13.534778577642335,
     "humidity": {
-      "raw_percent": 52.2362910235782,
-      "corrected_percent": 89.84627391009766
+      "raw_percent": 53.86465978599159,
+      "corrected_percent": 90.71163264293548
     },
     "pressure": {
-      "raw_hpa": 1008.4573625738823,
-      "corrected_hpa": 1012.9255825982289,
-      "tendency": null,
-      "tendency_symbol": null,
-      "tendency_symbol_ascii": null,
-      "tendency_code": null,
-      "tendency_description": null
+      "raw_hpa": 1007.9870516711791,
+      "corrected_hpa": 1012.4567392770025,
+      "tendency": "falling_then_rising",
+      "tendency_symbol": "\u2198\u2192",
+      "tendency_symbol_ascii": "v=",
+      "tendency_code": 5,
+      "tendency_description": "Decreasing, then increasing; pressure is the same or lower than at the start of the window."
     },
     "light": {
-      "lux": 7.89335
+      "lux": 0.0
     },
     "wind": {
-      "speed_m_s": 0.5487531953346718,
-      "direction_degrees": 135,
-      "direction_cardinal": "SE"
+      "speed_m_s": 0.18359398140759148,
+      "direction_degrees": 180,
+      "direction_cardinal": "S"
     },
     "rain": {
       "rate_mm_s": 0.0,
       "interval_total_mm": 0.0,
       "interval_minutes": 1.0,
-      "event_total_mm": 0.5588,
-      "event_duration_minutes": 14.485718141649947,
-      "event_started_at": "2026-09-29T17:03:29Z",
-      "event_last_rain_at": "2026-09-29T17:06:23Z",
-      "event_reset_due_at": "2026-09-29T17:36:23Z"
+      "event_total_mm": 0.0,
+      "event_duration_minutes": null,
+      "event_started_at": null,
+      "event_last_rain_at": null,
+      "event_reset_due_at": null
     }
   }
 }

@@ -180,7 +180,7 @@ InfluxDB publishing is optional and controlled by `publish_to_influxdb` (disable
 	sudo systemctl status weatherhat
 	```
 
-5. Check the service log for connection or authorization errors, then open the bucket in InfluxDB Data Explorer. Look for measurement `weatherhat`, station tag from `influxdb.station` (currently `CGallsky`), and fields such as `temperature_corrected_celsius`, `pressure_corrected_hpa`, `wind_speed_m_s`, and `rain_interval_total_mm`.
+5. Check the service log for connection or authorization errors, then open the bucket in InfluxDB Data Explorer. Look for measurement `weatherhat`, station tag from `influxdb.station` (currently `CGallsky`), and fields such as `temperature_corrected_celsius`, `humidity_corrected_percent_float`, `pressure_corrected_hpa`, `wind_speed_m_s`, and `rain_interval_total_mm`. The `_float` humidity field avoids a prior integer/float schema conflict; historical integer values remain under `humidity_corrected_percent`.
 
 The optional systemd environment file is `/etc/myweather/influxdb.env`; its mode should remain `600`. Never copy the real file into the repository. The tracked `config/influxdb.env.example` contains placeholders only. To stop sending data, set `publish_to_influxdb` back to `false` and restart the service. Allsky Extra Data publishing remains independent.
 

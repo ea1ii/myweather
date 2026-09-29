@@ -74,5 +74,5 @@ def adjusted_humidity(raw_hum):
         comp_hum = coefficients[f"coef_{degree}"]
         for power in range(degree - 1, -1, -1):
             comp_hum = comp_hum * raw_hum + coefficients[f"coef_{power}"]
-    return raw_hum, min(100, comp_hum)
+    return raw_hum, float(min(100.0, comp_hum))
 
