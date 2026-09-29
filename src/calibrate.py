@@ -544,7 +544,16 @@ def timestamped_plot_path(input_path, report_path, channel, generated_at):
 
 def write_svg_plot(path, channel_name, result):
     points = result["_fit"]["points"]
-    models = sorted(result["degree_results"], key=lambda model: model["degree"])
+    models = sorted(
+        result["degree_results"],
+        key=lambda model: (
+            model["cross_validated_rmse"] is None,
+            model["cross_validated_rmse"]
+            if model["cross_validated_rmse"] is not None
+            else model["rmse"],
+            model["degree"],
+        ),
+    )
     recommended_degree = result["suggested_degree"]
     highlighted_degree = recommended_degree if recommended_degree is not None else result["selected_degree"]
     x_values = [raw for raw, _ in points]
@@ -579,7 +588,7 @@ def write_svg_plot(path, channel_name, result):
     height = 640
     left = 100
     right = 36
-    top = 112
+    top = 205
     bottom = 82
     plot_width = width - left - right
     plot_height = height - top - bottom
@@ -622,11 +631,18 @@ def write_svg_plot(path, channel_name, result):
     svg.append(f'<line x1="{left}" y1="{height - bottom}" x2="{width - right}" y2="{height - bottom}" stroke="#252a34" stroke-width="1.5"/>')
     svg.append(f'<line x1="{left}" y1="{top}" x2="{left}" y2="{height - bottom}" stroke="#252a34" stroke-width="1.5"/>')
     alternate_colors = ("#64748b", "#2f83a8", "#8b6bb1", "#9b7b39", "#507b58")
-    legend_x = left
+    model_colors = {}
     for model_index, model in enumerate(models):
         model_degree = model["degree"]
         is_highlighted = model_degree == highlighted_degree
         color = "#d04a35" if is_highlighted else alternate_colors[model_index % len(alternate_colors)]
+        model_colors[model_degree] = color
+
+    # Draw worse curves first so the recommended curve remains visible on top.
+    for model in reversed(models):
+        model_degree = model["degree"]
+        is_highlighted = model_degree == highlighted_degree
+        color = model_colors[model_degree]
         polyline_points = " ".join(
             f"{x_position(x_value):.2f},{y_position(y_value):.2f}"
             for x_value, y_value in zip(curve_x, curve_y_by_degree[model_degree])
@@ -635,17 +651,23 @@ def write_svg_plot(path, channel_name, result):
             f'<polyline points="{polyline_points}" fill="none" stroke="{color}" '
             f'stroke-width="{4 if is_highlighted else 2}"/>'
         )
-        legend_label = f"degree {model_degree}"
-        if is_highlighted:
-            legend_label += f" ({degree_label})"
-        svg.append(f'<line x1="{legend_x}" y1="86" x2="{legend_x + 18}" y2="86" stroke="{color}" stroke-width="{4 if is_highlighted else 2}"/>')
-        svg.append(f'<text x="{legend_x + 22}" y="90" font-family="sans-serif" font-size="10">{legend_label}</text>')
-        legend_x += 108 if is_highlighted else 82
     for x_value, reference in points:
         svg.append(f'<circle cx="{x_position(x_value):.2f}" cy="{y_position(reference):.2f}" r="4" fill="#176b87" fill-opacity="0.78"/>')
     svg.append(f'<text x="{left + plot_width / 2:.2f}" y="{height - 18}" text-anchor="middle" font-family="sans-serif" font-size="15">{x_label}</text>')
     svg.append(f'<text x="24" y="{top + plot_height / 2:.2f}" transform="rotate(-90 24 {top + plot_height / 2:.2f})" text-anchor="middle" font-family="sans-serif" font-size="15">{y_label}</text>')
-    svg.append(f'<circle cx="{legend_x}" cy="86" r="4" fill="#176b87"/><text x="{legend_x + 10}" y="90" font-family="sans-serif" font-size="10">reference samples</text>')
+    for rank, model in enumerate(models, start=1):
+        model_degree = model["degree"]
+        is_highlighted = model_degree == highlighted_degree
+        color = model_colors[model_degree]
+        y = 88 + (rank - 1) * 18
+        score = model["cross_validated_rmse"]
+        score_label = "CV RMSE" if score is not None else "RMSE"
+        score_value = score if score is not None else model["rmse"]
+        recommendation = " (suggested)" if is_highlighted and recommended_degree is not None else ""
+        svg.append(f'<line x1="{left}" y1="{y - 4}" x2="{left + 20}" y2="{y - 4}" stroke="{color}" stroke-width="{4 if is_highlighted else 2}"/>')
+        svg.append(f'<text x="{left + 27}" y="{y}" font-family="sans-serif" font-size="11">{rank}. degree {model_degree}{recommendation} | {score_label} {score_value:.5g}</text>')
+    reference_y = 88 + len(models) * 18
+    svg.append(f'<circle cx="{left + 4}" cy="{reference_y - 4}" r="4" fill="#176b87"/><text x="{left + 27}" y="{reference_y}" font-family="sans-serif" font-size="11">reference samples</text>')
     svg.append("</svg>")
 
     path.parent.mkdir(parents=True, exist_ok=True)
