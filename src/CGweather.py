@@ -92,6 +92,7 @@ class Weather:
         self.hat_dewpoint_celsius = None
         self.hat_humidity_raw = None
         self.hat_humidity = None
+        self.hat_mixing_ratio_g_kg = None
         self.hat_pressure_raw = None
         self.hat_pressure_corrected = None
         self.hat_light_lux = None
@@ -201,6 +202,7 @@ class Weather:
             "dewpoint_celsius": self.hat_dewpoint_celsius,
             "humidity_raw_percent": self.hat_humidity_raw,
             "humidity_corrected_percent": self.hat_humidity,
+            "mixing_ratio_g_kg": self.hat_mixing_ratio_g_kg,
             "pressure_raw_hpa": self.hat_pressure_raw,
             "pressure_corrected_hpa": self.hat_pressure_corrected,
             "pressure_tendency_code": tendency.get("code"),
@@ -655,6 +657,11 @@ class Weather:
             altitude = self.config["barometer"]["altitude_meters_asl"]
             pressure_factor = helpers.barometer_altitude_comp_factor(altitude, self.hat_temperature)
             self.hat_pressure_corrected = self.hat_pressure_raw * pressure_factor
+            self.hat_mixing_ratio_g_kg = helpers.mixing_ratio_g_kg(
+                self.hat_temperature,
+                self.hat_humidity,
+                self.hat_pressure_raw,
+            )
             self._write_datalog()
             sample_time_utc = datetime.now(timezone.utc)
             sample_time_monotonic = time.monotonic()
@@ -673,6 +680,7 @@ class Weather:
                 "dewpoint_celsius": self.hat_dewpoint_celsius,
                 "humidity_raw_percent": self.hat_humidity_raw,
                 "humidity_corrected_percent": self.hat_humidity,
+                "mixing_ratio_g_kg": self.hat_mixing_ratio_g_kg,
                 "pressure_raw_hpa": self.hat_pressure_raw,
                 "pressure_corrected_hpa": self.hat_pressure_corrected,
                 "pressure_tendency": tendency.get("keyword"),
@@ -721,6 +729,7 @@ class Weather:
                     "corrected_celsius": self.hat_temperature,
                 },
                 "dewpoint_celsius": self.hat_dewpoint_celsius,
+                "mixing_ratio_g_kg": self.hat_mixing_ratio_g_kg,
                 "humidity": {
                     "raw_percent": self.hat_humidity_raw,
                     "corrected_percent": self.hat_humidity,
@@ -766,6 +775,7 @@ class Weather:
             "EA1II_TEMPERATURE": self.hat_temperature,
             "EA1II_DEWPOINT": self.hat_dewpoint_celsius,
             "EA1II_HUMIDITY": self.hat_humidity,
+            "EA1II_MIXING_RATIO_G_KG": self.hat_mixing_ratio_g_kg,
             "EA1II_PRESSURE": self.hat_pressure_corrected,
             "EA1II_TENDENCY": tendency.get("keyword"),
             "EA1II_TENDENCY_SYMBOL": tendency.get("symbol"),

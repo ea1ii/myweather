@@ -6,7 +6,7 @@
     "station": "CGallsky"
   },
   "debug": true,
-  "datalogging": false,
+  "datalogging": true,
   "barometer": {
     "altitude_meters_asl": 38
   },

@@ -24,6 +24,7 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 - Add optional SVG calibration plots for remote viewing.
 - Add optional local MAD-based rejection of magnitude outliers in calibration data.
 - Add rain-event duration to debug, InfluxDB, and Allsky outputs.
+- Add derived mixing ratio from corrected temperature/humidity and raw station pressure.
 
 ### 0.3 - 2026-09-29
 
@@ -49,7 +50,21 @@ The service reads CPU temperature every 5 seconds and reports a rolling average 
 
 When `datalogging` is enabled, raw HAT temperature and humidity are appended at each HAT update to a timestamped CSV file in `data/logs/`.
 
-HAT output includes corrected temperature and pressure, dew point, humidity, light, wind speed and direction, and rain rate and interval total. Rain also includes a cumulative event total, elapsed event duration in minutes, and start and last-rain timestamps; debug output shows the pending reset due time, or `null` when no reset is pending. Duration runs from the first positive interval until the event resets after the configured dry period. The duration is also exported to Allsky as `EA1II_RAIN_EVENT_DURATION_MINUTES`. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
+HAT output includes corrected temperature and pressure, dew point, humidity, derived mixing ratio, light, wind speed and direction, and rain rate and interval total. Mixing ratio is calculated in g/kg from corrected temperature and humidity plus raw station pressure. Rain also includes a cumulative event total, elapsed event duration in minutes, and start and last-rain timestamps; debug output shows the pending reset due time, or `null` when no reset is pending. Duration runs from the first positive interval until the event resets after the configured dry period. The duration is also exported to Allsky as `EA1II_RAIN_EVENT_DURATION_MINUTES`. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
+
+### Humidity Metrics
+
+- **Relative humidity (RH)** is the actual water-vapor partial pressure divided by the saturation vapor pressure at the same air temperature, expressed as a percentage. It describes how close the air is to saturation, not the absolute amount of water vapor.
+- **Dew point** is the temperature to which air must cool, at approximately constant pressure and water-vapor content, to become saturated. The current dew-point output is supplied by the Weather HAT driver; it is not recalculated from the calibrated temperature and RH values.
+- **Mixing ratio** is the mass of water vapor per mass of dry air, reported here in g/kg. It is calculated from calibrated temperature and RH and raw station pressure. The calculation uses the Magnus approximation for saturation vapor pressure:
+
+$$
+e_s(T) = 6.112\,\exp\!\left(\frac{17.67T}{T+243.5}\right)\;\text{hPa}, \qquad
+e = \frac{RH}{100}e_s(T), \qquad
+w = 621.98\frac{e}{p-e}\;\text{g/kg}
+$$
+
+Here, $T$ is in degrees Celsius, $RH$ is in percent, $e$ is actual vapor pressure, and $p$ is raw station pressure in hPa.
 
 Pressure tendency is classified over a configurable 3-, 6-, or 24-hour window and includes a keyword, WMO-style code, symbol, and description. The 3-hour window is the WMO standard interval; longer windows use the same classification over a longer period.
 
