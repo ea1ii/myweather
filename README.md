@@ -5,19 +5,24 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 ## Project
 
 - Author: Carlos Gil (ea1ii)
-- Version: 0.3
+- Version: 0.4
 - License: MIT (see [LICENSE](LICENSE))
 - GitHub: https://github.com/ea1ii/myweather
 - Development conversation: [verbatim indexed transcript](DEVELOPMENT_CONVERSATION.md)
 
 ## Changelog
 
+### 0.4 - 2026-09-29
+
+- Add opt-in timestamped CSV logging for raw temperature and humidity.
+- Add configurable temperature and humidity polynomial degrees from 2 to 6 with seven coefficients.
+- Add rain-event duration to debug, InfluxDB, and Allsky outputs.
+
 ### 0.3 - 2026-09-29
 
 - Persist pressure tendency history across restarts when the saved samples are recent enough.
 - Add process start time and uptime to debug output.
 - Refine InfluxDB and Allsky fields, unset-value defaults, and ASCII pressure-tendency symbols.
-- Add opt-in timestamped CSV logging for raw temperature and humidity.
 
 ### 0.2
 
@@ -88,8 +93,8 @@ Top-level switches:
 
 - `adjustment_method`: choose `linear` or `polynomial`; each group's `available_adjustment_methods` lists the accepted values and is used by the settings CLI for validation.
 - `linear.slope` and `linear.intercept`: apply `slope * raw_value + intercept`.
-- Temperature `polynomial.cubic_a` through `cubic_d`: coefficients for `a*x^3 + b*x^2 + c*x + d`.
-- Humidity `polynomial.quadratic_a` through `quadratic_c`: coefficients for `a*x^2 + b*x + c`; corrected humidity is capped at 100%.
+- Temperature `polynomial.degree`: polynomial degree from 2 to 6 (default 3). `polynomial.coef_0` through `coef_6` are the coefficients for the constant through sixth-power terms; only coefficients up to the selected degree are used.
+- Humidity `polynomial.degree`: polynomial degree from 2 to 6 (default 2). `polynomial.coef_0` through `coef_6` are the coefficients for the constant through sixth-power terms; only coefficients up to the selected degree are used. Corrected humidity is capped at 100%.
 
 `sampling`:
 

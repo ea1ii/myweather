@@ -6,7 +6,7 @@
 
 # Author: Carlos Gil (ea1ii)
 # Date: 2026-09-27
-# Version: 0.3
+# Version: 0.4
 # License: MIT (see ../LICENSE)
 # GitHub: https://github.com/ea1ii/myweather
 #
@@ -71,6 +71,8 @@ class Weather:
         self.allsky_extra_path = Path("/home/pi/allsky/config/overlay/extra/weather.json")
         self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
+        helpers.validate_temperature_degree(self.config["temperature"])
+        helpers.validate_humidity_degree(self.config["humidity"])
         self._config_mtime_ns = self.config_path.stat().st_mtime_ns
         self._influxdb_client = None
         self._influxdb_write_api = None
@@ -241,6 +243,8 @@ class Weather:
             if self.config_path.stat().st_mtime_ns != config_mtime_ns:
                 return False
 
+            helpers.validate_temperature_degree(new_config["temperature"])
+            helpers.validate_humidity_degree(new_config["humidity"])
             sample_count = new_config["sampling"]["cpu_temperature_samples_to_average"]
             if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
                 return False

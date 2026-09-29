@@ -34,10 +34,21 @@
       "intercept": -1.0
     },
     "polynomial": {
-      "cubic_a": 0.0,
-      "cubic_b": 0.0,
-      "cubic_c": 1.0,
-      "cubic_d": 0.0
+      "available_degrees": [
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "degree": 3,
+      "coef_0": 0.0,
+      "coef_1": 1.0,
+      "coef_2": 0.0,
+      "coef_3": 0.0,
+      "coef_4": 0.0,
+      "coef_5": 0.0,
+      "coef_6": 0.0
     }
   },
   "humidity": {
@@ -51,9 +62,21 @@
       "intercept": 0.0
     },
     "polynomial": {
-      "quadratic_a": 0.0,
-      "quadratic_b": 1.0,
-      "quadratic_c": 0.0
+        "available_degrees": [
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "degree": 2,
+        "coef_0": 0.0,
+        "coef_1": 1.0,
+        "coef_2": 0.0,
+        "coef_3": 0.0,
+        "coef_4": 0.0,
+        "coef_5": 0.0,
+        "coef_6": 0.0
     }
   },
   "sampling": {

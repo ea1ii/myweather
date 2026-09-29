@@ -15,15 +15,23 @@ def barometer_altitude_comp_factor(alt, temp):
     return comp_factor
 
 # Calculate adjusted temperature based on correction factors
+def validate_temperature_degree(temperature):
+    degree = temperature["polynomial"]["degree"]
+    if type(degree) is not int or not 2 <= degree <= 6:
+        raise ValueError("Temperature polynomial degree must be an integer from 2 to 6")
+    return degree
+
+
 def adjusted_temperature(raw_temp):
     #raw_temp = bme280.get_temperature()
     temperature = CORRECTION_FACTORS["temperature"]
     method = temperature["adjustment_method"]
     if method == "polynomial":
         coefficients = temperature["polynomial"]
-        comp_temp = (coefficients["cubic_a"] * math.pow(raw_temp, 3) +
-                     coefficients["cubic_b"] * math.pow(raw_temp, 2) +
-                     coefficients["cubic_c"] * raw_temp + coefficients["cubic_d"])
+        degree = validate_temperature_degree(temperature)
+        comp_temp = coefficients[f"coef_{degree}"]
+        for power in range(degree - 1, -1, -1):
+            comp_temp = comp_temp * raw_temp + coefficients[f"coef_{power}"]
     elif method == "linear":
         coefficients = temperature["linear"]
         comp_temp = coefficients["slope"] * raw_temp + coefficients["intercept"]
@@ -38,12 +46,21 @@ def adjusted_humidity(raw_hum):
     method = humidity["adjustment_method"]
     if method == "polynomial":
         coefficients = humidity["polynomial"]
-        comp_hum = (coefficients["quadratic_a"] * math.pow(raw_hum, 2) +
-                    coefficients["quadratic_b"] * raw_hum + coefficients["quadratic_c"])
+        degree = validate_humidity_degree(humidity)
+        comp_hum = coefficients[f"coef_{degree}"]
+        for power in range(degree - 1, -1, -1):
+            comp_hum = comp_hum * raw_hum + coefficients[f"coef_{power}"]
     elif method == "linear":
         coefficients = humidity["linear"]
         comp_hum = coefficients["slope"] * raw_hum + coefficients["intercept"]
     else:
         raise ValueError(f"Unsupported humidity adjustment method: {method}")
     return raw_hum, min(100, comp_hum)
+
+
+def validate_humidity_degree(humidity):
+    degree = humidity["polynomial"]["degree"]
+    if type(degree) is not int or not 2 <= degree <= 6:
+        raise ValueError("Humidity polynomial degree must be an integer from 2 to 6")
+    return degree
 

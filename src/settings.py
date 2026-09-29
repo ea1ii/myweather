@@ -59,6 +59,14 @@ def validate_value(config, dotted_path, current, new_value):
         if new_value not in methods:
             raise ValueError(f"Method must be one of: {', '.join(methods)}")
 
+    if dotted_path == "temperature.polynomial.degree":
+        if type(new_value) is not int or not 2 <= new_value <= 6:
+            raise ValueError("Temperature polynomial degree must be an integer from 2 to 6")
+
+    if dotted_path == "humidity.polynomial.degree":
+        if type(new_value) is not int or not 2 <= new_value <= 6:
+            raise ValueError("Humidity polynomial degree must be an integer from 2 to 6")
+
 
 def main():
     parser = argparse.ArgumentParser(description="View or update weather settings in the JSON file.")
