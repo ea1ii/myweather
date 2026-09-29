@@ -6,7 +6,7 @@
 
 # Author: Carlos Gil (ea1ii)
 # Date: 2026-09-27
-# Version: 0.2
+# Version: 0.3
 # License: MIT (see ../LICENSE)
 # GitHub: https://github.com/ea1ii/myweather
 #
@@ -24,6 +24,7 @@
 # - Start: sudo systemctl start weatherhat
 # - Stop:  sudo systemctl stop weatherhat
 
+import csv
 import json
 import math
 import os
@@ -33,7 +34,7 @@ import tempfile
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import helpers
@@ -65,6 +66,8 @@ ASCII_TENDENCY_SYMBOL_TRANSLATION = str.maketrans({"↗": "^", "↘": "v", "→"
 
 class Weather:
     def __init__(self, hat=None):
+        self.process_started_at = datetime.now(timezone.utc)
+        self.process_started_monotonic = time.monotonic()
         self.allsky_extra_path = Path("/home/pi/allsky/config/overlay/extra/weather.json")
         self.config_path = Path(__file__).resolve().parent.parent / "config" / "settings.json"
         self.config = self.read_config()
@@ -99,11 +102,17 @@ class Weather:
         self.hat_rain_event_total_mm = 0.0
         self.hat_rain_event_started_at = None
         self.hat_rain_event_last_rain_at = None
+        self._rain_event_started_monotonic = None
         self._rain_event_last_rain_monotonic = None
         self._rain_event_dry_period_seconds(self.config)
+        self._pressure_history_restore_max_age_seconds(self.config)
         self.pressure_tendency_buffer = deque()
         self.pressure_tendency = None
-        self.debug_data_path = Path(__file__).resolve().parent.parent / "data" / "data.json"
+        data_dir = Path(__file__).resolve().parent.parent / "data"
+        self.datalog_dir = data_dir / "logs"
+        self._datalog_path = None
+        self.debug_data_path = data_dir / "data.json"
+        self.pressure_history_path = data_dir / "cache" / "pressure_history.json"
         self.cpu_temperature_buffer = deque()
         self._temperature_lock = threading.Lock()
         self.resize_cpu_temperature_buffer(
@@ -112,6 +121,7 @@ class Weather:
         self.resize_pressure_tendency_buffer(
             self._pressure_tendency_buffer_capacity(self.config)
         )
+        self._load_pressure_tendency_history()
         self._stop_event = threading.Event()
         self._reader_thread = threading.Thread(
             target=self._run,
@@ -197,6 +207,7 @@ class Weather:
             "rain_interval_total_mm": self.hat_rain_total_mm,
             "rain_interval_minutes": self.hat_rain_total_period_minutes,
             "rain_event_total_mm": self.hat_rain_event_total_mm,
+            "rain_event_duration_minutes": self._rain_event_duration_minutes(),
         }
         point = Point(self._influxdb_measurement).tag("station", self._influxdb_station)
         has_fields = False
@@ -233,7 +244,10 @@ class Weather:
             sample_count = new_config["sampling"]["cpu_temperature_samples_to_average"]
             if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 1:
                 return False
+            if not isinstance(new_config.get("datalogging", False), bool):
+                return False
             self._rain_event_dry_period_seconds(new_config)
+            self._pressure_history_restore_max_age_seconds(new_config)
             pressure_buffer_capacity = self._pressure_tendency_buffer_capacity(new_config)
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             return False
@@ -291,6 +305,13 @@ class Weather:
             raise ValueError("Rain event dry period must be a positive number of minutes")
         return dry_period_minutes * 60
 
+    def _pressure_history_restore_max_age_seconds(self, config):
+        max_age_minutes = config["pressure_tendency"]["restore_max_age_minutes"]
+        if (isinstance(max_age_minutes, bool) or not isinstance(max_age_minutes, (int, float)) or
+                not math.isfinite(max_age_minutes) or max_age_minutes <= 0):
+            raise ValueError("Pressure history restore age must be a positive number of minutes")
+        return max_age_minutes * 60
+
     def _update_rain_event(self, interval_total_mm, observed_at, observed_at_monotonic):
         dry_period_seconds = self._rain_event_dry_period_seconds(self.config)
         if (self._rain_event_last_rain_monotonic is not None and
@@ -298,15 +319,63 @@ class Weather:
             self.hat_rain_event_total_mm = 0.0
             self.hat_rain_event_started_at = None
             self.hat_rain_event_last_rain_at = None
+            self._rain_event_started_monotonic = None
             self._rain_event_last_rain_monotonic = None
 
         if interval_total_mm > 0:
             timestamp = observed_at.isoformat(timespec="seconds").replace("+00:00", "Z")
             if self._rain_event_last_rain_monotonic is None:
                 self.hat_rain_event_started_at = timestamp
+                self._rain_event_started_monotonic = observed_at_monotonic
             self.hat_rain_event_total_mm += interval_total_mm
             self.hat_rain_event_last_rain_at = timestamp
             self._rain_event_last_rain_monotonic = observed_at_monotonic
+
+    def _rain_event_duration_minutes(self):
+        if self._rain_event_started_monotonic is None:
+            return None
+        return (time.monotonic() - self._rain_event_started_monotonic) / 60
+
+    def _write_datalog(self):
+        if not self.config.get("datalogging", False):
+            self._datalog_path = None
+            return
+        if self.hat_temperature_raw is None or self.hat_humidity_raw is None:
+            return
+
+        timestamp = datetime.now(timezone.utc)
+        if self._datalog_path is None:
+            filename_timestamp = timestamp.strftime("%Y%m%d_%H%MZ")
+            self._datalog_path = self.datalog_dir / f"datalog_{filename_timestamp}.csv"
+
+        self.datalog_dir.mkdir(parents=True, exist_ok=True)
+        needs_header = not self._datalog_path.exists()
+        try:
+            with self._datalog_path.open("a", newline="", encoding="utf-8") as datalog_file:
+                writer = csv.writer(datalog_file)
+                if needs_header:
+                    writer.writerow(("timestamp_utc", "raw_temperature_celsius", "raw_humidity_percent"))
+                writer.writerow((
+                    timestamp.isoformat(timespec="microseconds").replace("+00:00", "Z"),
+                    self.hat_temperature_raw,
+                    self.hat_humidity_raw,
+                ))
+        except OSError as error:
+            print(f"Unable to write datalog: {error}", file=sys.stderr, flush=True)
+
+    def _rain_event_reset_due_at(self):
+        if self._rain_event_last_rain_monotonic is None:
+            return None
+
+        remaining_seconds = (
+            self._rain_event_dry_period_seconds(self.config) -
+            (time.monotonic() - self._rain_event_last_rain_monotonic)
+        )
+        if remaining_seconds <= 0:
+            return None
+
+        reset_due_at = datetime.now(timezone.utc) + timedelta(seconds=remaining_seconds)
+        return reset_due_at.isoformat(timespec="seconds").replace("+00:00", "Z")
 
     def resize_pressure_tendency_buffer(self, sample_count):
         if isinstance(sample_count, bool) or not isinstance(sample_count, int) or sample_count < 2:
@@ -315,6 +384,107 @@ class Weather:
         recent_samples = list(self.pressure_tendency_buffer)[-sample_count:]
         self.pressure_tendency_buffer = deque(recent_samples, maxlen=sample_count)
         self._update_pressure_tendency()
+
+    def _load_pressure_tendency_history(self):
+        try:
+            history = json.loads(self.pressure_history_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"Unable to read pressure history; starting with an empty buffer: {error}", file=sys.stderr, flush=True)
+            return
+
+        try:
+            if not isinstance(history, dict):
+                raise ValueError("pressure history root is not an object")
+            if history.get("version") != 1 or not isinstance(history.get("samples"), list):
+                raise ValueError("unsupported pressure history format")
+            max_age_seconds = self._pressure_history_restore_max_age_seconds(self.config)
+            now_utc = datetime.now(timezone.utc)
+            saved_at_text = history.get("saved_at")
+            if not isinstance(saved_at_text, str):
+                raise ValueError("pressure history has no valid save time")
+            saved_at = datetime.fromisoformat(saved_at_text.replace("Z", "+00:00"))
+            if saved_at.tzinfo is None:
+                raise ValueError("pressure history save time has no timezone")
+            saved_age_seconds = (now_utc - saved_at.astimezone(timezone.utc)).total_seconds()
+            if saved_age_seconds < 0 or saved_age_seconds > max_age_seconds:
+                return
+
+            now_monotonic = time.monotonic()
+            restored_samples = []
+            previous_timestamp = None
+            for sample in history["samples"]:
+                if not isinstance(sample, dict) or not isinstance(sample.get("timestamp"), str):
+                    raise ValueError("pressure history contains an invalid sample")
+                timestamp = datetime.fromisoformat(sample["timestamp"].replace("Z", "+00:00"))
+                pressure = sample.get("pressure_hpa")
+                if timestamp.tzinfo is None:
+                    raise ValueError("pressure sample time has no timezone")
+                if isinstance(pressure, bool) or not isinstance(pressure, (int, float)) or not math.isfinite(pressure):
+                    raise ValueError("pressure history contains an invalid pressure value")
+
+                timestamp = timestamp.astimezone(timezone.utc)
+                if previous_timestamp is not None and timestamp <= previous_timestamp:
+                    raise ValueError("pressure history sample times are not increasing")
+                age_seconds = (now_utc - timestamp).total_seconds()
+                if age_seconds < 0:
+                    raise ValueError("pressure history contains a future sample")
+                restored_samples.append((now_monotonic - age_seconds, pressure, timestamp))
+                previous_timestamp = timestamp
+
+            if not restored_samples:
+                return
+            newest_age_seconds = (now_utc - restored_samples[-1][2]).total_seconds()
+            if newest_age_seconds > max_age_seconds:
+                return
+
+            max_samples = self.pressure_tendency_buffer.maxlen
+            self.pressure_tendency_buffer = deque(restored_samples[-max_samples:], maxlen=max_samples)
+            self._update_pressure_tendency()
+        except (KeyError, TypeError, ValueError, OverflowError) as error:
+            print(f"Ignoring invalid pressure history; starting with an empty buffer: {error}", file=sys.stderr, flush=True)
+
+    def _save_pressure_tendency_history(self):
+        if not self.pressure_tendency_buffer:
+            return
+
+        saved_at = datetime.now(timezone.utc)
+        history = {
+            "version": 1,
+            "saved_at": saved_at.isoformat(timespec="microseconds").replace("+00:00", "Z"),
+            "samples": [
+                {
+                    "timestamp": sample_time.isoformat(timespec="microseconds").replace("+00:00", "Z"),
+                    "pressure_hpa": pressure,
+                }
+                for _, pressure, sample_time in self.pressure_tendency_buffer
+            ],
+        }
+
+        self.pressure_history_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.pressure_history_path.parent,
+                prefix=".pressure-history-",
+                suffix=".json.tmp",
+                delete=False,
+            ) as history_file:
+                json.dump(history, history_file, indent=2, allow_nan=False)
+                history_file.write("\n")
+                temporary_path = Path(history_file.name)
+            os.chmod(temporary_path, 0o644)
+            os.replace(temporary_path, self.pressure_history_path)
+        except (OSError, ValueError) as error:
+            print(f"Unable to save pressure history: {error}", file=sys.stderr, flush=True)
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink()
+                except OSError:
+                    pass
 
     def _update_pressure_tendency(self):
         self.pressure_tendency = None
@@ -328,23 +498,31 @@ class Weather:
             return
 
         for index in range(1, len(samples)):
-            sample_time, sample_pressure = samples[index]
+            sample_time, sample_pressure, _ = samples[index]
             if sample_time >= window_start:
-                previous_time, previous_pressure = samples[index - 1]
+                previous_time, previous_pressure, _ = samples[index - 1]
                 fraction = (window_start - previous_time) / (sample_time - previous_time)
                 start_pressure = previous_pressure + fraction * (sample_pressure - previous_pressure)
-                pressures = [start_pressure] + [pressure for _, pressure in samples[index:]]
+                pressures = [start_pressure] + [pressure for _, pressure, _ in samples[index:]]
                 if sample_time == window_start:
-                    pressures = [sample_pressure] + [pressure for _, pressure in samples[index + 1:]]
+                    pressures = [sample_pressure] + [pressure for _, pressure, _ in samples[index + 1:]]
                 threshold = self.config["pressure_tendency"]["steady_threshold_hpa"]
                 self.pressure_tendency = self._classify_pressure_tendency(pressures, threshold)
                 return
 
     @staticmethod
     def _classify_pressure_tendency(pressures, threshold):
+        """Classify a pressure curve using net change and significant turns.
+
+        ``threshold`` is an hPa deadband. Net changes within +/- this value
+        count as steady, and a peak or trough must clear it relative to both
+        endpoints to count as a reversal.
+        """
         if len(pressures) < 3:
             return None
 
+        # Use the first, index-middle, and last samples to compare the whole
+        # window and its two halves. The midpoint is by sample count, not time.
         start = pressures[0]
         middle = pressures[len(pressures) // 2]
         end = pressures[-1]
@@ -353,6 +531,8 @@ class Weather:
         second_change = end - middle
         peak_index = max(range(1, len(pressures) - 1), key=pressures.__getitem__)
         trough_index = min(range(1, len(pressures) - 1), key=pressures.__getitem__)
+        # Require an interior extreme to exceed both endpoints by the
+        # deadband; this filters small fluctuations out of reversal patterns.
         rises_then_falls = (
             pressures[peak_index] - start > threshold and
             pressures[peak_index] - end > threshold
@@ -362,24 +542,37 @@ class Weather:
             end - pressures[trough_index] > threshold
         )
 
+        # A net rise is further classified by reversals and by whether the
+        # rise starts weakly or loses strength in the second half.
         if net_change > threshold:
             if rises_then_falls:
                 code = 0
+            # A weak/negative first half or a stronger second half represents
+            # pressure that falls/is steady before rising.
             elif first_change <= threshold or second_change - first_change > threshold:
                 code = 3
+            # A weak or clearly weaker second half represents a rise that
+            # becomes steady or slows.
             elif second_change <= threshold or first_change - second_change > threshold:
                 code = 1
             else:
                 code = 2
+        # Apply the corresponding shape tests when pressure falls overall.
         elif net_change < -threshold:
             if falls_then_rises:
                 code = 5
+            # A weak/positive first half represents steady/rising pressure
+            # before the overall fall.
             elif first_change >= -threshold:
                 code = 8
+            # A weak second-half fall or a stronger first-half decline
+            # represents falling pressure that becomes steady or slows.
             elif second_change >= -threshold or second_change - first_change > threshold:
                 code = 6
             else:
                 code = 7
+        # Inside the net-change deadband, keep a clear reversal classification;
+        # otherwise treat the complete window as steady.
         elif rises_then_falls and first_change >= 0:
             code = 0
         elif falls_then_rises:
@@ -440,8 +633,14 @@ class Weather:
             altitude = self.config["barometer"]["altitude_meters_asl"]
             pressure_factor = helpers.barometer_altitude_comp_factor(altitude, self.hat_temperature)
             self.hat_pressure_corrected = self.hat_pressure_raw * pressure_factor
-            self.pressure_tendency_buffer.append((time.monotonic(), self.hat_pressure_corrected))
+            self._write_datalog()
+            sample_time_utc = datetime.now(timezone.utc)
+            sample_time_monotonic = time.monotonic()
+            self.pressure_tendency_buffer.append(
+                (sample_time_monotonic, self.hat_pressure_corrected, sample_time_utc)
+            )
             self._update_pressure_tendency()
+            self._save_pressure_tendency_history()
             self._write_debug_data()
             self._write_allsky_extra_data()
             self._write_influxdb()
@@ -467,6 +666,7 @@ class Weather:
                 "rain_interval_total_mm": self.hat_rain_total_mm,
                 "rain_interval_minutes": self.hat_rain_total_period_minutes,
                 "rain_event_total_mm": self.hat_rain_event_total_mm,
+                "rain_event_duration_minutes": self._rain_event_duration_minutes(),
                 "rain_event_started_at": self.hat_rain_event_started_at,
                 "rain_event_last_rain_at": self.hat_rain_event_last_rain_at,
             }
@@ -476,8 +676,17 @@ class Weather:
             return
 
         tendency = self.pressure_tendency or {}
+        elapsed_minutes = int((time.monotonic() - self.process_started_monotonic) // 60)
+        uptime_days, remaining_minutes = divmod(elapsed_minutes, 24 * 60)
+        uptime_hours, uptime_minutes = divmod(remaining_minutes, 60)
         data = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "process_started_at": self.process_started_at.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            "uptime": {
+                "days": uptime_days,
+                "hours": uptime_hours,
+                "minutes": uptime_minutes,
+            },
             "cpu": {
                 "temperature": {
                     "sample_celsius": self.cpu_temperature_sample,
@@ -516,8 +725,10 @@ class Weather:
                     "interval_total_mm": self.hat_rain_total_mm,
                     "interval_minutes": self.hat_rain_total_period_minutes,
                     "event_total_mm": self.hat_rain_event_total_mm,
+                    "event_duration_minutes": self._rain_event_duration_minutes(),
                     "event_started_at": self.hat_rain_event_started_at,
                     "event_last_rain_at": self.hat_rain_event_last_rain_at,
+                    "event_reset_due_at": self._rain_event_reset_due_at(),
                 },
             },
         }
@@ -547,6 +758,7 @@ class Weather:
             "EA1II_RAIN_TOTAL": self.hat_rain_total_mm,
             "EA1II_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
             "EA1II_RAIN_EVENT_TOTAL": self.hat_rain_event_total_mm,
+            "EA1II_RAIN_EVENT_DURATION_MINUTES": self._rain_event_duration_minutes(),
             "EA1II_RAIN_EVENT_STARTED_AT": self.hat_rain_event_started_at,
             "EA1II_RAIN_EVENT_LAST_RAIN_AT": self.hat_rain_event_last_rain_at,
         }

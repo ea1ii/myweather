@@ -6,6 +6,7 @@
     "station": "CGallsky"
   },
   "debug": true,
+  "datalogging": true,
   "barometer": {
     "altitude_meters_asl": 38
   },
@@ -16,7 +17,8 @@
       24
     ],
     "window_hours": 3,
-    "steady_threshold_hpa": 0.1
+    "steady_threshold_hpa": 0.2,
+    "restore_max_age_minutes": 5
   },
   "rain_event": {
     "dry_period_minutes": 30
@@ -26,7 +28,6 @@
       "polynomial",
       "linear"
     ],
-    "temp_factor": 999,
     "adjustment_method": "linear",
     "linear": {
       "slope": 1.0,
@@ -56,7 +57,6 @@
     }
   },
   "sampling": {
-    "weather_interval_seconds": 5.0,
     "cpu_temperature_interval_seconds": 5.0,
     "hat_measurements_interval_minutes": 1.0,
     "cpu_temperature_samples_to_average": 5

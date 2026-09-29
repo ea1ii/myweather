@@ -1,44 +1,53 @@
 {
-  "timestamp": "2026-09-28T17:11:52Z",
+  "timestamp": "2026-09-29T13:21:01Z",
+  "process_started_at": "2026-09-29T13:17:23Z",
+  "uptime": {
+    "days": 0,
+    "hours": 0,
+    "minutes": 3
+  },
   "cpu": {
     "temperature": {
-      "sample_celsius": 43.816,
-      "average_celsius": null
+      "sample_celsius": 47.712,
+      "average_celsius": 47.225
     }
   },
   "hat": {
     "temperature": {
-      "raw_celsius": null,
-      "corrected_celsius": null
+      "raw_celsius": 21.1771679150188,
+      "corrected_celsius": 20.1771679150188
     },
-    "dewpoint_celsius": null,
+    "dewpoint_celsius": 17.55319751200579,
     "humidity": {
-      "raw_percent": null,
-      "corrected_percent": null
+      "raw_percent": 44.380147984934965,
+      "corrected_percent": 44.380147984934965
     },
     "pressure": {
-      "raw_hpa": null,
-      "corrected_hpa": null,
+      "raw_hpa": 1009.5911106677726,
+      "corrected_hpa": 1014.0683114682374,
       "tendency": null,
       "tendency_symbol": null,
+      "tendency_symbol_ascii": null,
       "tendency_code": null,
       "tendency_description": null
     },
     "light": {
-      "lux": null
+      "lux": 157.1292
     },
     "wind": {
-      "speed_m_s": null,
-      "direction_degrees": null,
-      "direction_cardinal": null
+      "speed_m_s": 0.1592831792671403,
+      "direction_degrees": 225,
+      "direction_cardinal": "SW"
     },
     "rain": {
-      "rate_mm_s": null,
-      "interval_total_mm": null,
-      "interval_minutes": null,
+      "rate_mm_s": 0.0,
+      "interval_total_mm": 0.0,
+      "interval_minutes": 1.0,
       "event_total_mm": 0.0,
+      "event_duration_minutes": null,
       "event_started_at": null,
-      "event_last_rain_at": null
+      "event_last_rain_at": null,
+      "event_reset_due_at": null
     }
   }
 }

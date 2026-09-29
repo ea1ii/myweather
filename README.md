@@ -5,16 +5,39 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 ## Project
 
 - Author: Carlos Gil (ea1ii)
-- Version: 0.2
+- Version: 0.3
 - License: MIT (see [LICENSE](LICENSE))
 - GitHub: https://github.com/ea1ii/myweather
 - Development conversation: [verbatim indexed transcript](DEVELOPMENT_CONVERSATION.md)
+
+## Changelog
+
+### 0.3 - 2026-09-29
+
+- Persist pressure tendency history across restarts when the saved samples are recent enough.
+- Add process start time and uptime to debug output.
+- Refine InfluxDB and Allsky fields, unset-value defaults, and ASCII pressure-tendency symbols.
+- Add opt-in timestamped CSV logging for raw temperature and humidity.
+
+### 0.2
+
+- Add InfluxDB publishing and Allsky Extra Data JSON integration.
+- Add cumulative rain-event totals with a configurable dry-period reset and timestamped debug snapshots.
+- Leave wind direction unset when wind speed is zero, and restart the service automatically after failures.
+
+### 0.1
+
+- Establish Weather HAT and Raspberry Pi CPU measurements, including configurable temperature and humidity corrections.
+- Add rolling CPU-temperature averages, grouped JSON settings and CLI, debug output, wind/rain readings, and pressure-tendency classification.
+- Add the initial systemd service and project setup documentation.
 
 ## Measurements
 
 The service reads CPU temperature every 5 seconds and reports a rolling average after the configured five-sample buffer fills. Weather HAT measurements are updated every minute by default.
 
-HAT output includes corrected temperature and pressure, dew point, humidity, light, wind speed and direction, and rain rate and interval total. Rain also includes a cumulative event total with start and last-rain timestamps. The event total resets after the configured dry period. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
+When `datalogging` is enabled, raw HAT temperature and humidity are appended at each HAT update to a timestamped CSV file in `data/logs/`.
+
+HAT output includes corrected temperature and pressure, dew point, humidity, light, wind speed and direction, and rain rate and interval total. Rain also includes a cumulative event total, elapsed event duration in minutes, and start and last-rain timestamps; debug output shows the pending reset due time, or `null` when no reset is pending. Duration runs from the first positive interval until the event resets after the configured dry period. The duration is also exported to Allsky as `EA1II_RAIN_EVENT_DURATION_MINUTES`. Wind direction is available in degrees and as an 8-point cardinal token. Wind and rain values become available when the Weather HAT driver completes its pulse-count interval.
 
 Pressure tendency is classified over a configurable 3-, 6-, or 24-hour window and includes a keyword, WMO-style code, symbol, and description. The 3-hour window is the WMO standard interval; longer windows use the same classification over a longer period.
 
@@ -40,6 +63,7 @@ python src/settings.py --set publish_as_vars true
 Top-level switches:
 
 - `debug` (boolean): write the current readings to `data/data.json` after measurements.
+- `datalogging` (boolean): append raw temperature and humidity samples with UTC timestamps to `data/logs/datalog_<timestamp>.csv`. Defaults to `false`; enabling it while running takes effect on the next HAT update.
 - `publish_as_vars` (boolean): write non-raw weather measurements to Allsky Extra Data at `/home/pi/allsky/config/overlay/extra/weather.json`. CPU temperatures and the debug timestamp are not exported. Disabled by default. Keys use the unique `EA1II_` prefix; Allsky exposes them to overlays with an `AS_` prefix.
 - `publish_to_influxdb` (boolean): send all numeric measurements, including raw readings, to InfluxDB. Disabled by default; credentials come from the systemd environment file.
 - `influxdb.measurement`: InfluxDB measurement name; defaults to `weatherhat`.
@@ -54,6 +78,7 @@ Top-level switches:
 - `available_window_hours`: supported evaluation windows. This list is used to validate `window_hours`.
 - `window_hours`: pressure-history window, currently one of 3, 6, or 24 hours. The WMO tendency standard uses 3 hours.
 - `steady_threshold_hpa`: pressure change in hPa at or below which a change is treated as steady.
+- `restore_max_age_minutes`: maximum age of the most recent saved pressure sample for restoring the history buffer after startup. History is stored in `data/cache/pressure_history.json`. If it is older or invalid, the service starts with an empty buffer. Defaults to 5 minutes.
 
 `rain_event`:
 
@@ -65,14 +90,12 @@ Top-level switches:
 - `linear.slope` and `linear.intercept`: apply `slope * raw_value + intercept`.
 - Temperature `polynomial.cubic_a` through `cubic_d`: coefficients for `a*x^3 + b*x^2 + c*x + d`.
 - Humidity `polynomial.quadratic_a` through `quadratic_c`: coefficients for `a*x^2 + b*x + c`; corrected humidity is capped at 100%.
-- `temperature.temp_factor` is present for reference but is not currently used by the runtime.
 
 `sampling`:
 
 - `cpu_temperature_interval_seconds`: time between CPU temperature samples.
 - `cpu_temperature_samples_to_average`: rolling CPU sample count; no average is available until the buffer fills. The buffer resizes when this setting changes.
 - `hat_measurements_interval_minutes`: time between Weather HAT updates. It also defines the interval represented by each rain-total reading and determines pressure-history buffer capacity.
-- `weather_interval_seconds` is present for reference but is not currently used by the runtime.
 
 Debug output to [data/data.json](data/data.json) is controlled by `debug`. Allsky publishing includes non-raw weather measurements with expiry times; unset strings are exported as `-` and unset numeric readings as `0`. It excludes the debug timestamp and CPU temperatures. `EA1II_TENDENCY_SYMBOL_ALT` provides an ASCII alternative to the Unicode tendency symbol (`^` rising, `v` falling, `=` steady). In an Allsky overlay, reference values by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally. InfluxDB receives only numeric debug measurements, including raw HAT readings; string fields are excluded.
 
