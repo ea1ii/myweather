@@ -53,6 +53,8 @@ CHANNELS = {
 
 
 def parse_timestamp(value):
+    # Datalog timestamps include a UTC offset/Z. If one is naive, assume UTC,
+    # then convert to local time to match the calibration-file timestamps.
     timestamp = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     if timestamp.tzinfo is None:
         timestamp = timestamp.replace(tzinfo=timezone.utc)
@@ -93,6 +95,8 @@ def read_calibration_file(path):
     with path.open(encoding="utf-8-sig") as calibration_file:
         for line_number, line in enumerate(calibration_file, start=1):
             fields = line.split()
+            # sample.txt contains headings, alarm limits, summaries, and numbered
+            # samples. Only numbered sample rows have reference T/RH and a time.
             if len(fields) < 5 or not fields[0].isdigit():
                 continue
             try:
@@ -120,6 +124,9 @@ def read_calibration_file(path):
 
 
 def pair_samples(datalog_rows, calibration_rows, max_time_difference):
+    # Calibration times are sorted, so bisection narrows each datalog row to
+    # the reference sample immediately before/after it. Matching is nearest in
+    # time; a reference row may be reused, but pairs beyond the tolerance drop.
     calibration_times = [row["timestamp"].timestamp() for row in calibration_rows]
     pairs = []
     unmatched = 0
@@ -146,6 +153,8 @@ def pair_samples(datalog_rows, calibration_rows, max_time_difference):
 
 
 def solve_least_squares(points, degree):
+    # A degree-n polynomial has n+1 unknown coefficients, so at least n+1
+    # paired samples and distinct raw inputs are needed for a determined fit.
     if len(points) < degree + 1:
         raise ValueError(f"degree {degree} needs at least {degree + 1} paired samples")
 
@@ -154,6 +163,8 @@ def solve_least_squares(points, degree):
     if len(set(x_values)) < degree + 1:
         raise ValueError(f"degree {degree} needs at least {degree + 1} distinct raw values")
 
+    # Scale raw inputs to roughly [-1, 1] before fitting. Powers of values such
+    # as 20 or 50 become poorly conditioned at higher degrees if fitted directly.
     x_min = min(x_values)
     x_max = max(x_values)
     scale = (x_max - x_min) / 2
@@ -162,6 +173,8 @@ def solve_least_squares(points, degree):
     center = (x_max + x_min) / 2
     normalized_x = [(value - center) / scale for value in x_values]
 
+    # The Vandermonde design matrix has A[i,k] = z_i**k. Solve
+    # min ||A*a - y||_2, where a contains coefficients in normalized x (z).
     column_count = degree + 1
     matrix = [
         [value ** power for power in range(column_count)]
@@ -169,18 +182,22 @@ def solve_least_squares(points, degree):
     ]
     transformed_y = list(y_values)
 
-    # Householder QR avoids squaring the condition number as normal equations do.
+    # Householder QR triangularizes A while preserving least-squares residuals.
+    # It avoids forming A.T*A, which would square the matrix condition number.
     for pivot in range(column_count):
         vector = [matrix[row][pivot] for row in range(pivot, len(points))]
         norm = math.sqrt(math.fsum(value * value for value in vector))
         if norm < 1e-14:
             raise ValueError(f"degree {degree} fit is numerically singular")
+        # Choosing the sign to reinforce vector[0] reduces cancellation when
+        # constructing the Householder reflection v.
         vector[0] += norm if vector[0] >= 0 else -norm
         vector_norm_squared = math.fsum(value * value for value in vector)
         if vector_norm_squared < 1e-28:
             raise ValueError(f"degree {degree} fit is numerically singular")
         factor = 2 / vector_norm_squared
 
+        # Apply H = I - 2*v*v.T/(v.T*v) to the remaining matrix columns.
         for column in range(pivot, column_count):
             projection = factor * math.fsum(
                 vector[offset] * matrix[pivot + offset][column]
@@ -189,6 +206,7 @@ def solve_least_squares(points, degree):
             for offset, value in enumerate(vector):
                 matrix[pivot + offset][column] -= projection * value
 
+        # Apply the same reflection to y, producing Q.T*y alongside R.
         projection = factor * math.fsum(
             vector[offset] * transformed_y[pivot + offset]
             for offset in range(len(vector))
@@ -196,6 +214,7 @@ def solve_least_squares(points, degree):
         for offset, value in enumerate(vector):
             transformed_y[pivot + offset] -= projection * value
 
+    # Back-substitute through the upper-triangular R to recover a in R*a=Q.T*y.
     normalized_coefficients = [0.0] * column_count
     for row in range(column_count - 1, -1, -1):
         remainder = math.fsum(
@@ -207,6 +226,10 @@ def solve_least_squares(points, degree):
             raise ValueError(f"degree {degree} fit is numerically singular")
         normalized_coefficients[row] = (transformed_y[row] - remainder) / diagonal
 
+    # Convert from z=(x-center)/scale to raw x. For each normalized term a_k*z^k,
+    # expand (x-center)^k with the binomial theorem; its contribution to raw
+    # coefficient b_j is a_k*C(k,j)*(-center)^(k-j)/scale^k. Runtime settings
+    # store the resulting ordinary monomial coefficients as coef_0, coef_1, ... .
     coefficients = [0.0] * 7
     for normalized_power, coefficient in enumerate(normalized_coefficients):
         for raw_power in range(normalized_power + 1):
@@ -222,6 +245,8 @@ def solve_least_squares(points, degree):
 
 
 def evaluate_polynomial(coefficients, degree, x_value):
+    # Horner's form evaluates c0 + c1*x + ... + cn*x**n with fewer
+    # multiplications and less rounding error than separately computing powers.
     result = coefficients[degree]
     for power in range(degree - 1, -1, -1):
         result = result * x_value + coefficients[power]
@@ -229,6 +254,10 @@ def evaluate_polynomial(coefficients, degree, x_value):
 
 
 def fit_metrics(points, degree, coefficients):
+    # Residual e_i is reference minus fitted HAT value. RMSE=sqrt(sum(e_i^2)/n)
+    # penalizes large errors more than MAE=sum(|e_i|)/n. R^2=1-SSE/SST compares
+    # residual error with variance around the reference mean; Pearson r measures
+    # linear association, not agreement, so it is reported but not used to rank.
     actual = [target for _, target in points]
     predicted = [evaluate_polynomial(coefficients, degree, raw) for raw, _ in points]
     residuals = [target - estimate for target, estimate in zip(actual, predicted)]
@@ -261,6 +290,9 @@ def fit_metrics(points, degree, coefficients):
 
 
 def cross_validated_rmse(points, degree):
+    # Hold out contiguous blocks instead of random rows because adjacent sensor
+    # samples are time-correlated. The score estimates how well the polynomial
+    # generalizes to unseen time segments; lower RMSE is better.
     sample_count = len(points)
     if sample_count < degree + 2:
         return None
@@ -284,6 +316,10 @@ def cross_validated_rmse(points, degree):
 
 
 def detect_local_magnitude_outliers(values, sigma_threshold, window_radius, minimum_deviation):
+    # Compare each point with nearby values, excluding the point itself. MAD is
+    # the median absolute deviation from the local median; multiplying by 1.4826
+    # makes it comparable to standard deviation for normally distributed noise.
+    # The absolute floor avoids rejecting tiny quantization steps when MAD=0.
     outliers = {}
     for index, value in enumerate(values):
         start = max(0, index - window_radius)
@@ -323,6 +359,9 @@ def analyze_channel(
     ]
     excluded_outliers = []
     if reject_outliers:
+        # Test raw and reference streams independently. If either side is a
+        # local spike, discard the entire matched calibration pair for this
+        # channel so it cannot pull the fitted curve toward a bad measurement.
         raw_outliers = detect_local_magnitude_outliers(
             [raw for raw, _ in original_points],
             outlier_sigma,
@@ -376,6 +415,8 @@ def analyze_channel(
 
     models = []
     rejected_degrees = {}
+    # Evaluate only the configured degree(s); --all-degrees uses the published
+    # available_degrees list, while --degree overrides it for this run.
     for degree in degrees:
         if type(degree) is not int or not 0 <= degree <= 4:
             rejected_degrees[str(degree)] = "degree must be an integer from 0 to 4"
@@ -398,6 +439,8 @@ def analyze_channel(
         raise ValueError(f"no usable {channel['label'].lower()} fit ({reasons})")
 
     if all_degrees:
+        # Prefer models with a cross-validation score and choose its minimum.
+        # If the sample count is too small for CV, fall back to training RMSE.
         cv_models = [model for model in models if model["cross_validated_rmse"] is not None]
         candidates = cv_models or models
         selected = min(
