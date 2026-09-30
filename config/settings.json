@@ -6,7 +6,7 @@
     "station": "CGallsky"
   },
   "debug": true,
-  "datalogging": true,
+  "datalogging": false,
   "barometer": {
     "altitude_meters_asl": 38
   },
@@ -33,30 +33,30 @@
         3,
         4
       ],
-      "degree": 1,
-      "coef_0": 9.736419207501541,
-      "coef_1": 0.5847072123181266,
-      "coef_2": 0.0,
-      "coef_3": 0.0,
+      "degree": 3,
+      "coef_0": 135.72730440598514,
+      "coef_1": -21.70125598633733,
+      "coef_2": 1.2935933868579312,
+      "coef_3": -0.024650715945021006,
       "coef_4": 0.0
     }
   },
   "humidity": {
     "calibration_enabled": true,
     "polynomial": {
-        "available_degrees": [
-          0,
-          1,
-          2,
-          3,
-          4
-        ],
-        "degree": 1,
-        "coef_0": 62.08651110224579,
-        "coef_1": 0.5314267583684644,
-        "coef_2": 0.0,
-        "coef_3": 0.0,
-        "coef_4": 0.0
+      "available_degrees": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "degree": 2,
+      "coef_0": 11.802238873342915,
+      "coef_1": 2.282594053312507,
+      "coef_2": -0.015329877409857248,
+      "coef_3": 0.0,
+      "coef_4": 0.0
     }
   },
   "sampling": {

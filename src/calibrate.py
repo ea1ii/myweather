@@ -3,8 +3,8 @@
 # Calibration utility for myweather Weather HAT corrections.
 #
 # Author: Carlos Gil (ea1ii)
-# Date: 2026-09-29
-# Version: 0.1
+# Date: 2026-09-30
+# Version: 0.2
 # Compatible with CGweather: 0.4.1
 # License: MIT (see ../LICENSE)
 # GitHub: https://github.com/ea1ii/myweather
@@ -33,7 +33,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "config" / "settings.json"
-CALIBRATE_VERSION = "0.1"
+CALIBRATE_VERSION = "0.2"
 CHANNELS = {
     "temperature": {
         "input_field": "raw_temperature_celsius",
@@ -121,6 +121,13 @@ def read_calibration_file(path):
         )
     rows.sort(key=lambda row: row["timestamp"])
     return rows
+
+
+def read_sample_files(paths, reader):
+    rows = []
+    for path in paths:
+        rows.extend(reader(path))
+    return sorted(rows, key=lambda row: row["timestamp"])
 
 
 def pair_samples(datalog_rows, calibration_rows, max_time_difference):
@@ -493,7 +500,7 @@ def analyze_channel(
     }
 
 
-def print_channel_result(name, result, show_fit):
+def print_channel_result(name, result, show_fit, previous_polynomial):
     print(
         f"{CHANNELS[name]['label']}: {result['used_samples']} of "
         f"{result['matched_samples']} paired samples used"
@@ -519,6 +526,16 @@ def print_channel_result(name, result, show_fit):
     print("  coefficients:")
     for name, value in result["selected_coefficients"].items():
         print(f"    {name} = {value:.12g}")
+
+    print("  previous configuration vs fitted result:")
+    print(f"    {'setting':<10} {'current':>18} {'fitted':>18}")
+    print(
+        f"    {'degree':<10} {previous_polynomial['degree']:>18} "
+        f"{result['selected_degree']:>18}"
+    )
+    for setting, fitted_value in result["selected_coefficients"].items():
+        previous_value = previous_polynomial.get(setting, 0.0)
+        print(f"    {setting:<10} {previous_value:>18.12g} {fitted_value:>18.12g}")
 
     if show_fit:
         fit = result["_fit"]
@@ -907,8 +924,22 @@ def build_parser():
         description="Fit temperature and humidity corrections from datalog and reference samples."
     )
     parser.add_argument("--version", action="version", version=f"calibrate {CALIBRATE_VERSION} (CGweather 0.4.1)")
-    parser.add_argument("--input", required=True, type=Path, help="Datalog CSV path")
-    parser.add_argument("--calibration", required=True, type=Path, help="Reference sample.txt path")
+    parser.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        nargs="+",
+        action="extend",
+        help="One or more datalog CSV paths",
+    )
+    parser.add_argument(
+        "--calibration",
+        required=True,
+        type=Path,
+        nargs="+",
+        action="extend",
+        help="One or more reference sample paths",
+    )
     parser.add_argument(
         "--channel",
         choices=("temperature", "humidity", "both"),
@@ -969,8 +1000,8 @@ def main(argv=None):
         with args.config.open(encoding="utf-8") as config_file:
             config = json.load(config_file)
 
-        datalog_rows = read_datalog(args.input)
-        calibration_rows = read_calibration_file(args.calibration)
+        datalog_rows = read_sample_files(args.input, read_datalog)
+        calibration_rows = read_sample_files(args.calibration, read_calibration_file)
         pairs, unmatched_rows = pair_samples(
             datalog_rows, calibration_rows, args.max_time_difference_seconds
         )
@@ -998,8 +1029,14 @@ def main(argv=None):
         report_path = timestamped_report_path(args.report_json, generated_at) if args.report_json else None
         report = {
             "generated_at_utc": generated_at.isoformat(timespec="seconds").replace("+00:00", "Z"),
-            "input_file": str(args.input.resolve()),
-            "calibration_file": str(args.calibration.resolve()),
+            "input_file": (
+                str(args.input[0].resolve()) if len(args.input) == 1
+                else [str(path.resolve()) for path in args.input]
+            ),
+            "calibration_file": (
+                str(args.calibration[0].resolve()) if len(args.calibration) == 1
+                else [str(path.resolve()) for path in args.calibration]
+            ),
             "settings_file": str(args.config.resolve()),
             "local_timezone": str(datetime.now().astimezone().tzinfo),
             "channel_selection": args.channel,
@@ -1035,7 +1072,7 @@ def main(argv=None):
         plot_files = {}
         if args.plot:
             for name, result in channel_results.items():
-                plot_path = timestamped_plot_path(args.input, report_path, name, generated_at)
+                plot_path = timestamped_plot_path(args.input[0], report_path, name, generated_at)
                 write_combined_svg_plot(
                     plot_path, name, result, datalog_rows, calibration_rows
                 )
@@ -1045,7 +1082,7 @@ def main(argv=None):
         if args.plot_data:
             for name in channel_names:
                 plot_path = timestamped_data_plot_path(
-                    args.input, report_path, name, args.plot_data, generated_at
+                    args.input[0], report_path, name, args.plot_data, generated_at
                 )
                 write_data_svg_plot(
                     plot_path,
@@ -1070,7 +1107,8 @@ def main(argv=None):
             f"({unmatched_rows} outside the time tolerance)."
         )
         for name, result in channel_results.items():
-            print_channel_result(name, result, args.show_fit)
+            previous_polynomial = config[name]["polynomial"]
+            print_channel_result(name, result, args.show_fit, previous_polynomial)
 
         if args.update_config:
             update_config(args.config, config, channel_results)

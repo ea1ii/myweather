@@ -10,7 +10,7 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 - GitHub: https://github.com/ea1ii/myweather
 - Development conversation: [verbatim indexed transcript](DEVELOPMENT_CONVERSATION.md)
 
-## Changelog
+## Main Project Changelog
 
 ### 0.4.1 - 2026-09-29
 
@@ -43,6 +43,16 @@ Weather HAT data acquisition and AllSky integration for Raspberry Pi.
 - Establish Weather HAT and Raspberry Pi CPU measurements, including configurable temperature and humidity corrections.
 - Add rolling CPU-temperature averages, grouped JSON settings and CLI, debug output, wind/rain readings, and pressure-tendency classification.
 - Add the initial systemd service and project setup documentation.
+
+## calibrate.py Changelog
+
+### 0.2 - 2026-09-30
+
+- Accept multiple datalog and reference files, combine them, and sort samples chronologically before matching.
+
+### 0.1 - 2026-09-29
+
+- Initial release of the calibration CLI for fitting temperature and humidity corrections from logged and reference samples.
 
 ## Measurements
 
@@ -102,6 +112,10 @@ Use the executable [src/calibrate.py](src/calibrate.py) to pair raw datalog samp
 	--reject-outliers \
 	--report-json data/logs/calibration-report.json
 ```
+
+Both `--input` and `--calibration` accept multiple paths after one flag or by repeating the flag. The files are combined and sorted chronologically before sample matching.
+Both `--input` and `--calibration` accept multiple paths after one flag or by repeating the flag. The files are combined and sorted chronologically before sample matching.
+Console results show the current configured degree and coefficients beside the fitted values. Add `--show-fit` to print the per-sample raw, reference, fitted, and residual values.
 
 Channels are `temperature`, `humidity`, or `both` (default). Pressure calibration is not supported because the supplied calibration format has no pressure reference. Timestamp pairs beyond `--max-time-difference-seconds` are skipped and counted. `--reject-outliers` additionally filters local raw/reference magnitude spikes with a rolling median/MAD test; it defaults to off. The default cutoff is 3.5 robust sigma with three neighboring samples on each side and minimum deviations of `0.5 C` for temperature and `2 %RH` for humidity. Rejected rows and reasons are recorded per channel in the JSON report. Without `--all-degrees`, the degree configured for each channel is used. `--all-degrees` compares the configured degrees and selects by cross-validated RMSE. Add `--update-config` to write the selected coefficients and degree and switch the selected channels to polynomial correction. The configuration is never changed unless this option is supplied. JSON report filenames receive a UTC timestamp before the extension, so repeated runs do not overwrite earlier reports. `--plot` writes one composite SVG per channel: raw HAT, reference, and corrected values over time above the calibration scatter and all fitted-degree curves. Each curve's legend shows its CV RMSE and is sorted best-to-worst; the suggested degree is highlighted. `--plot-data` separately writes time-series SVGs for raw, calibration, or both (default when the option is specified). Reference readings are limited to the datalog's time range. SVGs are saved beside the report (or beside the input file if no report was requested) and can be opened in VS Code or a browser on the PC when using Remote SSH.
 
