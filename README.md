@@ -126,19 +126,19 @@ The fit plots compare measured raw values with calibration references; each comb
 
 **Temperature fit and time series**
 
-![Temperature calibration fit and time series](data/logs/20260930/calibration-report_20260930_185838Z_temperature.svg)
+![Temperature calibration fit and time series](docs/calibration/2026-09-30/calibration-report_20260930_185838Z_temperature.svg)
 
 **Humidity fit and time series**
 
-![Humidity calibration fit and time series](data/logs/20260930/calibration-report_20260930_185838Z_humidity.svg)
+![Humidity calibration fit and time series](docs/calibration/2026-09-30/calibration-report_20260930_185838Z_humidity.svg)
 
 **Temperature time series**
 
-![Temperature calibration time series](data/logs/20260930/calibration-report_20260930_185838Z_temperature_data_both.svg)
+![Temperature calibration time series](docs/calibration/2026-09-30/calibration-report_20260930_185838Z_temperature_data_both.svg)
 
 **Humidity time series**
 
-![Humidity calibration time series](data/logs/20260930/calibration-report_20260930_185838Z_humidity_data_both.svg)
+![Humidity calibration time series](docs/calibration/2026-09-30/calibration-report_20260930_185838Z_humidity_data_both.svg)
 
 ### Parameter Reference
 
