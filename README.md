@@ -114,12 +114,31 @@ Use the executable [src/calibrate.py](src/calibrate.py) to pair raw datalog samp
 ```
 
 Both `--input` and `--calibration` accept multiple paths after one flag or by repeating the flag. The files are combined and sorted chronologically before sample matching.
-Both `--input` and `--calibration` accept multiple paths after one flag or by repeating the flag. The files are combined and sorted chronologically before sample matching.
 Console results show the current configured degree and coefficients beside the fitted values. Add `--show-fit` to print the per-sample raw, reference, fitted, and residual values.
 
 Channels are `temperature`, `humidity`, or `both` (default). Pressure calibration is not supported because the supplied calibration format has no pressure reference. Timestamp pairs beyond `--max-time-difference-seconds` are skipped and counted. `--reject-outliers` additionally filters local raw/reference magnitude spikes with a rolling median/MAD test; it defaults to off. The default cutoff is 3.5 robust sigma with three neighboring samples on each side and minimum deviations of `0.5 C` for temperature and `2 %RH` for humidity. Rejected rows and reasons are recorded per channel in the JSON report. Without `--all-degrees`, the degree configured for each channel is used. `--all-degrees` compares the configured degrees and selects by cross-validated RMSE. Add `--update-config` to write the selected coefficients and degree and switch the selected channels to polynomial correction. The configuration is never changed unless this option is supplied. JSON report filenames receive a UTC timestamp before the extension, so repeated runs do not overwrite earlier reports. `--plot` writes one composite SVG per channel: raw HAT, reference, and corrected values over time above the calibration scatter and all fitted-degree curves. Each curve's legend shows its CV RMSE and is sorted best-to-worst; the suggested degree is highlighted. `--plot-data` separately writes time-series SVGs for raw, calibration, or both (default when the option is specified). Reference readings are limited to the datalog's time range. SVGs are saved beside the report (or beside the input file if no report was requested) and can be opened in VS Code or a browser on the PC when using Remote SSH.
 
 Timestamp pairs outside `--max-time-difference-seconds` are always skipped. Add `--reject-outliers` to also filter local magnitude spikes from the raw and reference series using a rolling median/MAD test; `--outlier-sigma` and `--outlier-window` adjust its sensitivity and neighborhood. When enabled, the fit and plots use only retained matched pairs, and the JSON report lists rejected values and reasons. Filtering is off by default.
+
+### Latest Calibration Plots (2026-09-30)
+
+The fit plots compare measured raw values with calibration references; each combined plot also includes its time series.
+
+**Temperature fit and time series**
+
+![Temperature calibration fit and time series](data/logs/20260930/calibration-report_20260930_185838Z_temperature.svg)
+
+**Humidity fit and time series**
+
+![Humidity calibration fit and time series](data/logs/20260930/calibration-report_20260930_185838Z_humidity.svg)
+
+**Temperature time series**
+
+![Temperature calibration time series](data/logs/20260930/calibration-report_20260930_185838Z_temperature_data_both.svg)
+
+**Humidity time series**
+
+![Humidity calibration time series](data/logs/20260930/calibration-report_20260930_185838Z_humidity_data_both.svg)
 
 ### Parameter Reference
 
