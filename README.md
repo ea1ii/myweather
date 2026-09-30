@@ -78,12 +78,14 @@ python src/settings.py --get sampling.hat_measurements_interval_minutes
 python src/settings.py --set sampling.hat_measurements_interval_minutes 1
 ```
 
-> **Setup reminder:** Before relying on corrected pressure, set `barometer.altitude_meters_asl` to the Weather HAT's actual altitude above sea level. Allsky Extra Data publishing is off by default; set `publish_as_vars` to `true` to publish readings.
+For a full-screen terminal settings editor, install the optional Textual dependency and run:
 
 ```bash
-python src/settings.py --set barometer.altitude_meters_asl YOUR_ALTITUDE_METERS
-python src/settings.py --set publish_as_vars true
+.venv/bin/python -m pip install -r requirements-settings-gr.txt
+./src/settings_gr.py
 ```
+
+The launcher automatically uses the project `.venv` when Textual is unavailable in the system Python.
 
 ## Calibration CLI
 
@@ -143,6 +145,7 @@ Top-level switches:
 - `cpu_temperature_interval_seconds`: time between CPU temperature samples.
 - `cpu_temperature_samples_to_average`: rolling CPU sample count; no average is available until the buffer fills. The buffer resizes when this setting changes.
 - `hat_measurements_interval_minutes`: time between Weather HAT updates. It also defines the interval represented by each rain-total reading and determines pressure-history buffer capacity.
+- `wind_mean_window_minutes`: time window for rolling wind speed and circular wind direction means. Defaults to 10 minutes; raw wind readings remain available separately.
 - `datalogging_interval_minutes`: minimum time between raw temperature/humidity CSV samples when `datalogging` is enabled. Defaults to 1 minute; logging still occurs only on HAT measurement updates.
 
 Debug output to [data/data.json](data/data.json) is controlled by `debug`. Allsky publishing includes non-raw weather measurements with expiry times; unset strings are exported as `-` and unset numeric readings as `0`. It excludes the debug timestamp and CPU temperatures. `EA1II_TENDENCY_SYMBOL_ALT` provides an ASCII alternative to the Unicode tendency symbol (`^` rising, `v` falling, `=` steady). In an Allsky overlay, reference values by their `EA1II_` key, for example `${EA1II_TEMPERATURE}`; Allsky adds the `AS_` environment-variable prefix internally. InfluxDB receives only numeric debug measurements, including raw HAT readings; string fields are excluded.

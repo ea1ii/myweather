@@ -99,6 +99,10 @@ class Weather:
         self.hat_wind_speed_m_s = None
         self.hat_wind_direction_degrees = None
         self.hat_wind_direction_cardinal = None
+        self.hat_wind_speed_mean_m_s = None
+        self.hat_wind_direction_mean_degrees = None
+        self.hat_wind_direction_mean_cardinal = None
+        self.wind_sample_buffer = deque()
         self.hat_rain_rate_mm_s = None
         self.hat_rain_total_mm = None
         self.hat_rain_total_period_minutes = None
@@ -110,6 +114,7 @@ class Weather:
         self._rain_event_dry_period_seconds(self.config)
         self._pressure_history_restore_max_age_seconds(self.config)
         self._datalog_interval_seconds(self.config)
+        self._wind_mean_window_seconds(self.config)
         self.pressure_tendency_buffer = deque()
         self.pressure_tendency = None
         data_dir = Path(__file__).resolve().parent.parent / "data"
@@ -209,6 +214,8 @@ class Weather:
             "light_lux": self.hat_light_lux,
             "wind_speed_m_s": self.hat_wind_speed_m_s,
             "wind_direction_degrees": self.hat_wind_direction_degrees,
+            "wind_speed_mean_m_s": self.hat_wind_speed_mean_m_s,
+            "wind_direction_mean_degrees": self.hat_wind_direction_mean_degrees,
             "rain_rate_mm_s": self.hat_rain_rate_mm_s,
             "rain_interval_total_mm": self.hat_rain_total_mm,
             "rain_interval_minutes": self.hat_rain_total_period_minutes,
@@ -259,6 +266,7 @@ class Weather:
             self._datalog_interval_seconds(new_config)
             self._rain_event_dry_period_seconds(new_config)
             self._pressure_history_restore_max_age_seconds(new_config)
+            self._wind_mean_window_seconds(new_config)
             pressure_buffer_capacity = self._pressure_tendency_buffer_capacity(new_config)
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
             return False
@@ -329,6 +337,55 @@ class Weather:
                 not math.isfinite(interval_minutes) or interval_minutes <= 0):
             raise ValueError("Datalogging interval must be a positive number of minutes")
         return interval_minutes * 60
+
+    def _wind_mean_window_seconds(self, config):
+        window_minutes = config["sampling"]["wind_mean_window_minutes"]
+        if (isinstance(window_minutes, bool) or not isinstance(window_minutes, (int, float)) or
+                not math.isfinite(window_minutes) or window_minutes <= 0):
+            raise ValueError("Wind mean window must be a positive number of minutes")
+        return window_minutes * 60
+
+    def _update_wind_averages(self, observed_at_monotonic, include_current=False):
+        if include_current:
+            speed = self.hat_wind_speed_m_s
+            direction = self.hat_wind_direction_degrees
+            if (not isinstance(speed, bool) and isinstance(speed, (int, float)) and
+                    math.isfinite(speed) and speed >= 0):
+                if (isinstance(direction, bool) or not isinstance(direction, (int, float)) or
+                        not math.isfinite(direction)):
+                    direction = None
+                else:
+                    direction = float(direction) % 360
+                self.wind_sample_buffer.append((observed_at_monotonic, float(speed), direction))
+
+        cutoff = observed_at_monotonic - self._wind_mean_window_seconds(self.config)
+        while self.wind_sample_buffer and self.wind_sample_buffer[0][0] < cutoff:
+            self.wind_sample_buffer.popleft()
+
+        if not self.wind_sample_buffer:
+            self.hat_wind_speed_mean_m_s = None
+            self.hat_wind_direction_mean_degrees = None
+            self.hat_wind_direction_mean_cardinal = None
+            return
+
+        self.hat_wind_speed_mean_m_s = (
+            sum(speed for _, speed, _ in self.wind_sample_buffer) / len(self.wind_sample_buffer)
+        )
+        directions = [direction for _, _, direction in self.wind_sample_buffer if direction is not None]
+        if directions:
+            sine_sum = math.fsum(math.sin(math.radians(direction)) for direction in directions)
+            cosine_sum = math.fsum(math.cos(math.radians(direction)) for direction in directions)
+            if math.hypot(sine_sum, cosine_sum) > len(directions) * 1e-12:
+                mean_direction = math.degrees(math.atan2(sine_sum, cosine_sum)) % 360
+                if math.isclose(mean_direction, 360, abs_tol=1e-10):
+                    mean_direction = 0.0
+                self.hat_wind_direction_mean_degrees = mean_direction
+                direction_name = self.hat.degrees_to_cardinal(mean_direction)
+                self.hat_wind_direction_mean_cardinal = WIND_DIRECTION_TOKENS[direction_name]
+                return
+
+        self.hat_wind_direction_mean_degrees = None
+        self.hat_wind_direction_mean_cardinal = None
 
     def _update_rain_event(self, interval_total_mm, observed_at, observed_at_monotonic):
         dry_period_seconds = self._rain_event_dry_period_seconds(self.config)
@@ -655,6 +712,7 @@ class Weather:
                 self.hat_rain_rate_mm_s = None
                 self.hat_rain_total_mm = None
                 self.hat_rain_total_period_minutes = None
+            self._update_wind_averages(time.monotonic(), self.hat.updated_wind_rain)
             self.hat_temperature_raw, self.hat_temperature = helpers.adjusted_temperature(self.hat.temperature)
             altitude = self.config["barometer"]["altitude_meters_asl"]
             pressure_factor = helpers.barometer_altitude_comp_factor(altitude, self.hat_temperature)
@@ -694,6 +752,9 @@ class Weather:
                 "wind_speed_m_s": self.hat_wind_speed_m_s,
                 "wind_direction_degrees": self.hat_wind_direction_degrees,
                 "wind_direction_cardinal": self.hat_wind_direction_cardinal,
+                "wind_speed_mean_m_s": self.hat_wind_speed_mean_m_s,
+                "wind_direction_mean_degrees": self.hat_wind_direction_mean_degrees,
+                "wind_direction_mean_cardinal": self.hat_wind_direction_mean_cardinal,
                 "rain_rate_mm_s": self.hat_rain_rate_mm_s,
                 "rain_interval_total_mm": self.hat_rain_total_mm,
                 "rain_interval_minutes": self.hat_rain_total_period_minutes,
@@ -752,6 +813,9 @@ class Weather:
                     "speed_m_s": self.hat_wind_speed_m_s,
                     "direction_degrees": self.hat_wind_direction_degrees,
                     "direction_cardinal": self.hat_wind_direction_cardinal,
+                    "speed_mean_m_s": self.hat_wind_speed_mean_m_s,
+                    "direction_mean_degrees": self.hat_wind_direction_mean_degrees,
+                    "direction_mean_cardinal": self.hat_wind_direction_mean_cardinal,
                 },
                 "rain": {
                     "rate_mm_s": self.hat_rain_rate_mm_s,
@@ -788,6 +852,9 @@ class Weather:
             "EA1II_WIND_SPEED": self.hat_wind_speed_m_s,
             "EA1II_WIND_DIRECTION": self.hat_wind_direction_cardinal,
             "EA1II_WIND_DIRECTION_DEGREES": self.hat_wind_direction_degrees,
+            "EA1II_WIND_SPEED_MEAN": self.hat_wind_speed_mean_m_s,
+            "EA1II_WIND_DIRECTION_MEAN": self.hat_wind_direction_mean_cardinal,
+            "EA1II_WIND_DIRECTION_MEAN_DEGREES": self.hat_wind_direction_mean_degrees,
             "EA1II_RAIN_RATE": self.hat_rain_rate_mm_s,
             "EA1II_RAIN_TOTAL": self.hat_rain_total_mm,
             "EA1II_RAIN_TOTAL_PERIOD_MINUTES": self.hat_rain_total_period_minutes,
@@ -802,6 +869,7 @@ class Weather:
             "EA1II_TENDENCY_SYMBOL_ALT",
             "EA1II_TENDENCY_DESCRIPTION",
             "EA1II_WIND_DIRECTION",
+            "EA1II_WIND_DIRECTION_MEAN",
             "EA1II_RAIN_EVENT_STARTED_AT",
             "EA1II_RAIN_EVENT_LAST_RAIN_AT",
         }
